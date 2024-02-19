@@ -1,4 +1,4 @@
-use Mophing::reader::Reader;
+use mophing::reader::Reader;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
