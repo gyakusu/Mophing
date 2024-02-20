@@ -1,4 +1,4 @@
-use crate::point::Point;
+use super::point::Point;
 
 pub struct Cell {
     pub points: Vec<Point>,

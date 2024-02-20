@@ -8,6 +8,7 @@ mod tests {
     #[test]
     fn test_hello_world() {
         // テスト対象の関数を呼び出し、結果をアサートします。
+        print!("{:?}",hello_world());
         assert_eq!(hello_world(), "Hello, world!");
     }
 }

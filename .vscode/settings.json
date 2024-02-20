@@ -2,6 +2,10 @@
     "github-enterprise.uri": "https://github.com/gyakusu/Mophing.git",
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml",
         "./Cargo.toml"
-    ]
+    ],
+    "rust-analyzer.showUnlinkedFileNotification": false
 }
