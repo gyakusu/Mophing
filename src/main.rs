@@ -1,13 +1,32 @@
 use plotters::prelude::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let root_drawing_area =
-        BitMapBackend::new("plotters-doc-data/2.png", (300, 200)).into_drawing_area();
-    // And we can split the drawing area into 3x3 grid
-    let child_drawing_areas = root_drawing_area.split_evenly((3, 3));
-    // Then we fill the drawing area with different color
-    for (area, color) in child_drawing_areas.into_iter().zip(0..) {
-        area.fill(&Palette99::pick(color))?;
-    }
-    root_drawing_area.present()?;
+    let root = BitMapBackend::new("plotters-doc-data/0.png", (640, 480)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption("y=x^2", ("sans-serif", 50).into_font())
+        .margin(5)
+        .x_label_area_size(30)
+        .y_label_area_size(30)
+        .build_cartesian_2d(-1f32..1f32, -0.1f32..1f32)?;
+
+    chart.configure_mesh().draw()?;
+
+    chart
+        .draw_series(LineSeries::new(
+            (-50..=50).map(|x| x as f32 / 50.0).map(|x| (x, x * x)),
+            &RED,
+        ))?
+        .label("y = x^2")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+    chart
+        .configure_series_labels()
+        .background_style(&WHITE.mix(0.8))
+        .border_style(&BLACK)
+        .draw()?;
+
+    root.present()?;
+
     Ok(())
 }
+

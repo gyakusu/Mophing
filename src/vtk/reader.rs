@@ -25,7 +25,7 @@ pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_se
     }
 }
 
-pub fn parse_points(chars: String, points: &mut Vec<Point>) {
+pub fn parse_point(chars: String, points: &mut Vec<Point>) {
     let nums: Vec<f32> = chars.split_whitespace()
         .filter_map(|s| s.parse().ok())
         .collect();
@@ -37,7 +37,7 @@ pub fn parse_points(chars: String, points: &mut Vec<Point>) {
     }
 }
 
-pub fn parse_tetras(chars: String, tetras: &mut Vec<Tetra>) {
+pub fn parse_tetra(chars: String, tetras: &mut Vec<Tetra>) {
     let nums: Vec<i64> = chars.split_whitespace()
         .filter_map(|s| s.parse().ok())
         .collect();
@@ -77,11 +77,11 @@ where
 }
 
 pub fn read_point(file_path: &str) -> Vec<Point> {
-    read_data(file_path, "Points", parse_points)
+    read_data(file_path, "Points", parse_point)
 }
 
 pub fn read_tetra(file_path: &str) -> Vec<Tetra> {
-    read_data(file_path, "connectivity", parse_tetras)
+    read_data(file_path, "connectivity", parse_tetra)
 }
 
 #[cfg(test)]
@@ -89,16 +89,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_points() {
+    fn test_parse_point() {
         let mut points = Vec::new();
-        parse_points("1.0 2.0 3.0".to_string(), &mut points);
+        parse_point("1.0 2.0 3.0".to_string(), &mut points);
         assert_eq!(points, vec![Point { x: [1.0, 2.0, 3.0] }]);
     }
 
     #[test]
-    fn test_parse_tetras() {
+    fn test_parse_tetra() {
         let mut tetras = Vec::new();
-        parse_tetras("1 2 3 4".to_string(), &mut tetras);
+        parse_tetra("1 2 3 4".to_string(), &mut tetras);
         assert_eq!(tetras, vec![Tetra { index: [1, 2, 3, 4] }]);
     }
 
