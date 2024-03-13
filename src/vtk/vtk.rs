@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 #[derive(Debug, PartialEq)]
 pub struct Point {
     pub x: [f32; 3],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct Face {
     pub index: [i64; 3],
 }
@@ -43,7 +43,7 @@ impl Mesh {
             tetras,
         }
     }
-    pub fn get_outer_point_indices(&self) -> Vec<usize> {
+    pub fn outer_point_indices(&self) -> Vec<usize> {
 
         let mut faces: Vec<Face> = Vec::new();
 
@@ -59,6 +59,26 @@ impl Mesh {
                 }
             }
         }
+        let mut not_shared_faces: HashSet<Face> = HashSet::new();
+
+        for face in &faces {
+            let count = faces.iter().filter(|&f| *f == *face).count();
+            if count == 1 {
+                not_shared_faces.insert(face.clone());
+            }
+        }
+
+        let not_shared_faces_vec: Vec<Face> = not_shared_faces.into_iter().collect();
+
+        let mut indices: Vec<usize> = Vec::new();
+        for face in &not_shared_faces_vec {
+            let index_vec: Vec<usize> = face.index.iter().map(|&i| i as usize).collect();
+            indices.extend(index_vec);
+        }
+        indices.sort();
+        indices.dedup();
+
+        indices
 
     }
 
@@ -69,29 +89,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_outer_indices() {
+    fn test_outer_point_indices() {
         let points = vec![
-            Point { x: [0.0, 0.0, 0.0] },
-            Point { x: [1.0, 0.0, 0.0] },
+            Point { x: [1.0, 1.0, 1.0] },
             Point { x: [2.0, 0.0, 0.0] },
-            Point { x: [3.0, 0.0, 0.0] },
-            Point { x: [4.0, 0.0, 0.0] },
-            Point { x: [5.0, 0.0, 0.0] },
-            Point { x: [6.0, 0.0, 0.0] },
+            Point { x: [0.0, 2.0, 0.0] },
+            Point { x: [0.0, 0.0, 2.0] },
+            Point { x: [2.0, 2.0, 2.0] },
         ];
         let tetras = vec![
-            Tetra::new([0, 1, 3, 5]).unwrap(),
-            Tetra::new([0, 1, 3, 6]).unwrap(),
-            Tetra::new([0, 1, 4, 5]).unwrap(),
-            Tetra::new([0, 1, 4, 6]).unwrap(),
-            Tetra::new([0, 2, 3, 5]).unwrap(),
-            Tetra::new([0, 2, 3, 6]).unwrap(),
-            Tetra::new([0, 2, 4, 5]).unwrap(),
-            Tetra::new([0, 2, 4, 6]).unwrap(),
+            Tetra::new([0, 1, 2, 3]).unwrap(),
+            Tetra::new([0, 1, 2, 4]).unwrap(),
+            Tetra::new([0, 1, 3, 4]).unwrap(),
+            Tetra::new([0, 2, 3, 4]).unwrap(),
         ];
         let mesh = Mesh::new(points, tetras);
-        let outer_point_indices = mesh.get_outer_point_indices();
-        assert_eq!(outer_point_indices, vec![1, 2, 3, 4, 5, 6, 7]);
+        let outer_point_indices = mesh.outer_point_indices();
+        assert_eq!(outer_point_indices, vec![1, 2, 3, 4]);
     }
 }
 
