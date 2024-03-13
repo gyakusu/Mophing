@@ -200,35 +200,6 @@ $ΨN (p = αv_0 + βv_1 + γv_2) := αΨ(v_0) + βΨ(v_1) + γΨ(v_2),$
 
 各三角形ciに、diに平行で、ciに実際にある3つの頂点の1つに入射する辺を追加する。その後、メッシュは不適合になる：頂点は三角形の辺に追加され、これらの頂点は、一般的に、反対側の三角形には組み込まれない。
 
-```py
-# 三角形メッシュの初期化
-mesh = initialize_mesh()
-
-# Initial Refinementの手順
-def initial_refinement(mesh):
-    new_vertices = []  # 新しい頂点を格納するリスト
-
-    for triangle in mesh.triangles:
-        # 三角形の各辺に平行な追加エッジを作成し、新しい頂点を追加
-        for edge in triangle.edges:
-            # エッジの中点を計算
-            mid_point = calculate_midpoint(edge.start, edge.end)
-            new_vertices.append(mid_point)
-
-            # エッジに新しい頂点を追加
-            edge.add_vertex(mid_point)
-
-    # メッシュに新しい頂点を追加
-    mesh.add_vertices(new_vertices)
-
-# 中点を計算する関数（仮）
-def calculate_midpoint(point1, point2):
-    return Point((point1.x + point2.x) / 2, (point1.y + point2.y) / 2)
-
-# メッシュの初期リファインメントを実行
-initial_refinement(mesh)
-```
-
 ## 7.1.2. Iterative Refinement
 
 辺の1つに非連結頂点vを持つ三角形ciがある限り、diに平行にciを横切る辺を、vから始めてciの反対側の辺で終わるように加える。図8はこの処理の手順を示している。挿入された辺はMの頂点を通る葉を形成していることに注意。
@@ -236,37 +207,6 @@ initial_refinement(mesh)
 ![fig8](image-5.png)
 
 出来上がったメッシュは三角形と四角形の面で構成される。対角線の辺を挿入することで、四辺形の面を三角形に分割する。得られた三角形メッシュはNと呼ばれ、次のような重要な性質を持つ：Nの同じ面内の任意の2点を通る2つの葉は、三角形の同じ列を通る。Nにおけるこれらの面の並びは、離散的な太い葉（図8右の破線の間を走る）として想像することができる。
-
-```py
-# Iterative Refinementの手順
-def iterative_refinement(mesh):
-    while not all_vertices_incorporated(mesh):
-        for triangle in mesh.triangles:
-            if not all_vertices_incorporated(triangle):
-                # 三角形に含まれていない頂点を見つける
-                non_incorporated_vertex = find_non_incorporated_vertex(triangle)
-                
-                # 非組み込み頂点を含むエッジに平行な新しいエッジを追加
-                add_parallel_edge(triangle, non_incorporated_vertex)
-
-# すべての頂点が組み込まれているかどうかをチェックする関数
-def all_vertices_incorporated(element):
-    return all(vertex.incorporated for vertex in element.vertices)
-
-# 三角形内で組み込まれていない頂点を見つける関数
-def find_non_incorporated_vertex(triangle):
-    for vertex in triangle.vertices:
-        if not vertex.incorporated:
-            return vertex
-
-# 非組み込み頂点を含むエッジに平行な新しいエッジを追加する関数
-def add_parallel_edge(triangle, non_incorporated_vertex):
-    # 新しいエッジを追加する処理を記述する
-
-# メッシュのIterative Refinementを実行
-iterative_refinement(mesh)
-
-```
 
 この疑似コードでは、与えられた三角形メッシュに対してIterative Refinementの手順を実行しています。各三角形内で組み込まれていない頂点を見つけ、その頂点を含むエッジに平行な新しいエッジを追加するという手順が繰り返し行われます。最終的に、すべての頂点が組み込まれるまでこのプロセスが続けられます。
 
@@ -277,13 +217,13 @@ iterative_refinement(mesh)
 1. Fully refined mesh M:
 最初の状態として、元のメッシュ M が完全にリファインされた状態が示されます。
 
-2. Fully refined mesh N:
+1. Fully refined mesh N:
 メッシュ M から始めて、新しいメッシュ N が完全にリファインされた状態が示されます。この段階では、M と N のメッシュ数は異なります。
 
-3. Simplified foliation of N:
+1. Simplified foliation of N:
 N のメッシュが簡略化され、特定の構造（foliation）に変換されます。この段階では、N のメッシュ数が変化し、よりシンプルな構造が形成されます。
 
-4. Decimation of N preserving M's tets:
+1. Decimation of N preserving M's tets:
 M のテトラヘドロン（tets）を保持しながら、N を簡略化するための減少処理（decimation）が行われます。この段階で、N のメッシュ数が変化し、M のテトラヘドロン構造が保持されたまま簡略化されたメッシュが生成されます。
 
 これらの段階を通じて、元のメッシュから新しいメッシュへのリファインメントプロセスが示されています。各段階でメッシュの数や構造が変化し、最終的に目的に適した形状や構造が得られるようになります。
@@ -358,6 +298,27 @@ def calculate_average_position(positions):
 
 ---
 
+形成されたPartitionからMappingをするまでの手順をステップバイステップで説明します：
+
+1. **Partitionの形成**:
+   - 最初に、与えられたドメインを適切な方法でPartition（分割）します。このPartitionは、ドメインを一次元の葉に分割する構造を与えます。
+
+2. **Transversal SectionのParameterization**:
+   - Partitionされたドメインから、元のドメインに対する横断的なセクション（Transversal Section）を選択します。この横断的なセクションは、元のドメインとの接点を持つ部分を指します。
+
+3. **一次元曲線のParameterization**:
+   - 選択した横断的なセクションやPartitionされた葉に対して、一次元曲線のParameterizationを行います。これにより、各葉やセクションが適切にParameterizedされます。
+
+4. **低次元Parameterizationの結合**:
+   - 低次元のParameterization（葉やセクションのParameterization）をテンソル積のように結合して、全体としてのMappingを構築します。これにより、全体的なParameterizationが形成されます。
+
+5. **Bijective Parameterizationの確立**:
+   - 低次元Parameterizationを結合して得られたMappingがBijective（一対一対応）であることを確立します。この手順により、元のドメインと目的のドメインの間にBijectiveなMappingが構築されます。
+
+以上が、PartitionからMappingをするまでの手順の基本的な流れです。この手法は、複雑なドメインや形状を単純なドメインにマッピングする際に使用され、BijectiveなParameterizationを実現するための重要なステップとなります。
+
+---
+
 理解しやすいように、3次元の構造体に引かれた1次元の線（leaf）を使って領域を面で区切るプロセスをステップバイステップで説明します。
 
 1. **Leafの引き方**:
@@ -411,5 +372,21 @@ Nは、各頂点の積分曲線（各エッジの積分曲面）に沿って分�
 ![B32](image-17.png)
 
 ほとんどの方向ベクトルが現在、メッシュのエッジに整列していることに注意してください。フォリエーションの簡素化がNに与える影響は、図9に示されています。最終マップの連続性を保つために、h≈|d|（セクション5.6を参照）の合理的な近似は、フィールドが平行な(n-1)-シンプレックスに隣接するn-シンプレックスで一貫している必要があります。
+
+
+---
+
+# 聞きたいこと
+
+- source/sinkはどうやって決めればいい？
+- 葉をどう活用すればいい？
+  - Sphireに対応させるには？対応するメッシュとは？
+  - ３次元上での線分となる葉を使って面で分割するには？
+- 円滑なHarmonic Fieldを得るためのエッジの反転って何が基準？
+- パラメタsは各区間ごとに[0,1]なのか全体を通して[0,1]なのか？各メッシュでの速度（dx/ds）は変わる？
+- 軸受のBijective Mapが終わったら次のステップは？
+- 
+
+# Laplacian smoothing
 
 
