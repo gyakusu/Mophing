@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Point {
@@ -43,10 +44,9 @@ impl Mesh {
             tetras,
         }
     }
+
     pub fn outer_point_indices(&self) -> Vec<usize> {
-
         let mut faces: Vec<Face> = Vec::new();
-
         for tetra in &self.tetras {
             for i in 0..4 {
                 for j in (i + 1)..4 {
@@ -59,26 +59,21 @@ impl Mesh {
                 }
             }
         }
-        let mut not_shared_faces: HashSet<Face> = HashSet::new();
-
+        let mut face_counts: HashMap<Face, usize> = HashMap::new();
         for face in &faces {
-            let count = faces.iter().filter(|&f| *f == *face).count();
-            if count == 1 {
-                not_shared_faces.insert(face.clone());
-            }
+            *face_counts.entry(face.clone()).or_insert(0) += 1;
         }
-
-        let not_shared_faces_vec: Vec<Face> = not_shared_faces.into_iter().collect();
-
-        let mut indices: Vec<usize> = Vec::new();
-        for face in &not_shared_faces_vec {
-            let index_vec: Vec<usize> = face.index.iter().map(|&i| i as usize).collect();
-            indices.extend(index_vec);
+        let not_shared_faces: HashSet<Face> = face_counts.into_iter()
+            .filter(|(_, count)| *count == 1)
+            .map(|(face, _)| face)
+            .collect();
+        let mut indices: HashSet<usize> = HashSet::new();
+        for face in not_shared_faces {
+            indices.extend(face.index.iter().map(|&i| i as usize));
         }
-        indices.sort();
-        indices.dedup();
-
-        indices
+        let mut indices_vec = Vec::from_iter(indices); 
+        indices_vec.sort();
+        indices_vec
 
     }
 

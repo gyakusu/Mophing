@@ -141,6 +141,7 @@ mod tests {
         println!("{:?}", mesh.tetras.first());
         println!("{:?}", mesh.tetras.last());
         println!("{:?}", mesh.tetras.len());
+        let hoge = mesh.outer_point_indices();
         assert!(true);
     }
 }
