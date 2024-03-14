@@ -1,4 +1,4 @@
-pub mod reader;
+pub mod io;
 pub mod vtk;
 
 

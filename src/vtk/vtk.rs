@@ -6,12 +6,25 @@ pub struct Point {
     pub x: [f32; 3],
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone)]
+impl Point {
+    pub fn new(x: [f32; 3]) -> Self {
+        Self {
+            x: x,
+        }
+    }
+    pub fn mul(&self, a: f32) -> Self {
+        Self {
+            x: [self.x[0] * a, self.x[1] * a, self.x[2] * a],
+        }
+    }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub struct Face {
     pub index: [i64; 3],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Tetra {
     pub index: [i64; 4],
 }
@@ -35,28 +48,35 @@ pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
     pub inner_index: Vec<i64>,
-    pub neighbor_index: HashMap<i64, Vec<i64>>,
+    pub neighbor_map: HashMap<i64, Vec<i64>>,
 }
 
 impl Mesh {
     pub fn new(points: Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
         let inner_index = find_inners(&tetras);
-        let neighbor_index = find_neighbors(&tetras);
+        let neighbor_map = find_neighbors(&tetras);
 
         Self {
             points,
             tetras,
             inner_index: inner_index,
-            neighbor_index: neighbor_index,
+            neighbor_map: neighbor_map,
         }
     }
-    pub fn laplacian_smoothing(&self, iteration: i64) {
-        // let new_points = laplacian_smoothing(self.points, self.inner_index, self.neighbor_index, iteration);
-        // self.points = new_points;
+    pub fn laplacian_smoothing(&mut self, iteration: i64) {
+        let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone(), iteration);
+        self.points = new_points;
+    }
+    pub fn get_inner_points(&self) -> Vec<Point> {
+        self.inner_index.iter().map(|&i| self.points[i as usize]).collect()
+    }
+    pub fn set_inner_points(&mut self, new_points: Vec<Point>) {
+        for (i, &index) in self.inner_index.iter().enumerate() {
+            self.points[index as usize] = new_points[i];
+        }
     }
 }
-
 pub fn find_inners(tetras: &Vec<Tetra>) -> Vec<i64> {
 
     let mut faces: Vec<Face> = Vec::new();
@@ -96,30 +116,30 @@ pub fn find_inners(tetras: &Vec<Tetra>) -> Vec<i64> {
 }
 
 pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<i64, Vec<i64>> {
-    let mut neighbor_index: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut neighbor_map: HashMap<i64, Vec<i64>> = HashMap::new();
     for tetra in tetras {
         for i in 0..4 {
             for j in 0..4 {
                 if i != j {
-                    neighbor_index.entry(tetra.index[i]).or_insert_with(Vec::new).push(tetra.index[j]);
+                    neighbor_map.entry(tetra.index[i]).or_insert_with(Vec::new).push(tetra.index[j]);
                 }
             }
         }
     }
-    for (_key, value) in neighbor_index.iter_mut() {
+    for (_key, value) in neighbor_map.iter_mut() {
         value.sort_unstable(); // ソート
         value.dedup(); // 重複の削除
     }
-    neighbor_index
+    neighbor_map
 }
 
-pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_index: HashMap<i64, Vec<i64>>, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, iteration: i64) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
             let mut sum = [0.0, 0.0, 0.0];
-            let neighbors = &neighbor_index[&i];
+            let neighbors = &neighbor_map[&i];
             for j in neighbors {
                 sum[0] += new_points[*j as usize].x[0];
                 sum[1] += new_points[*j as usize].x[1];
@@ -162,14 +182,14 @@ mod tests {
             Tetra::new([0, 2, 4, 5]).unwrap(),
             Tetra::new([0, 2, 4, 6]).unwrap(),
         ];
-        let neighbor_index = find_neighbors(&tetras);
-        assert_eq!(neighbor_index.get(&0), Some(&vec![1, 2, 3, 4, 5, 6]));
-        assert_eq!(neighbor_index.get(&1), Some(&vec![0, 3, 4, 5, 6]));
-        assert_eq!(neighbor_index.get(&2), Some(&vec![0, 3, 4, 5, 6]));
-        assert_eq!(neighbor_index.get(&3), Some(&vec![0, 1, 2, 5, 6]));
-        assert_eq!(neighbor_index.get(&4), Some(&vec![0, 1, 2, 5, 6]));
-        assert_eq!(neighbor_index.get(&5), Some(&vec![0, 1, 2, 3, 4]));
-        assert_eq!(neighbor_index.get(&6), Some(&vec![0, 1, 2, 3, 4]));
+        let neighbor_map = find_neighbors(&tetras);
+        assert_eq!(neighbor_map.get(&0), Some(&vec![1, 2, 3, 4, 5, 6]));
+        assert_eq!(neighbor_map.get(&1), Some(&vec![0, 3, 4, 5, 6]));
+        assert_eq!(neighbor_map.get(&2), Some(&vec![0, 3, 4, 5, 6]));
+        assert_eq!(neighbor_map.get(&3), Some(&vec![0, 1, 2, 5, 6]));
+        assert_eq!(neighbor_map.get(&4), Some(&vec![0, 1, 2, 5, 6]));
+        assert_eq!(neighbor_map.get(&5), Some(&vec![0, 1, 2, 3, 4]));
+        assert_eq!(neighbor_map.get(&6), Some(&vec![0, 1, 2, 3, 4]));
     }
     #[test]
     fn test_laplacian_smoothing() {
@@ -186,15 +206,16 @@ mod tests {
             Point { x: [-3.0, -sqrt27, 0.0] }, // 6
         ];
         let inner_index = vec![0, 1, 2, 3];
-        let neighbor_index = {
-            let mut neighbor_index: HashMap<i64, Vec<i64>> = HashMap::new();
-            neighbor_index.insert(0, vec![1, 2, 3]);
-            neighbor_index.insert(1, vec![0, 4, 5]);
-            neighbor_index.insert(2, vec![0, 4, 6]);
-            neighbor_index.insert(3, vec![0, 5, 6]);
-            neighbor_index
+        let neighbor_map = {
+            let mut neighbor_map: HashMap<i64, Vec<i64>> = HashMap::new();
+            neighbor_map.insert(0, vec![1, 2, 3]);
+            neighbor_map.insert(1, vec![0, 4, 5]);
+            neighbor_map.insert(2, vec![0, 4, 6]);
+            neighbor_map.insert(3, vec![0, 5, 6]);
+            neighbor_map
         };
-        let new_points = laplacian_smoothing(points, inner_index, neighbor_index, 100);
+        let new_points = laplacian_smoothing(points, inner_index, neighbor_map, 100);
+
         assert_eq!(new_points[0], Point { x: [ 0.0,    0.0, 0.0] });
         assert_eq!(new_points[1], Point { x: [ 1.0,  sqrt3, 0.0] });
         assert_eq!(new_points[2], Point { x: [ 1.0, -sqrt3, 0.0] });

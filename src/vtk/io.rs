@@ -1,5 +1,7 @@
 use std::fs::File;
 use std::io::BufReader;
+use std::io::Read;
+use std::io::Write;
 use xml::reader::{EventReader, XmlEvent, Error};
 use super::vtk::Point;
 use super::vtk::Tetra;
@@ -93,6 +95,34 @@ pub fn read_all(file_path: &str) -> Mesh {
     mesh
 }
 
+pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, points: &mut Vec<Point>) {
+    let mut old_file = File::open(old_file_path).unwrap();
+    let mut contents = String::new();
+    old_file.read_to_string(&mut contents).unwrap();
+
+    // Find the start and end indices of the "Points" section
+    let start_index = contents.find("<Points>").unwrap();
+    let end_index = contents.find("</Points>").unwrap() + "</Points>".len();
+
+    // Replace the "Points" section with the new points
+    let mut new_contents = contents[..start_index].to_string();
+    new_contents.push_str("<Points>\n");
+    new_contents.push_str(&format!("  <DataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">\n"));
+
+    for point in points {
+        new_contents.push_str(&format!("    {} {} {}\n", point.x[0], point.x[1], point.x[2]));
+    }
+    new_contents.push_str("  </DataArray>\n");
+    new_contents.push_str("</Points>\n");
+    new_contents.push_str(&contents[end_index..]);
+    
+    // Write the new contents to a new file
+    let mut new_file = File::create(new_file_path).unwrap();
+    new_file.write_all(new_contents.as_bytes()).unwrap();
+
+    println!("The new file has been created: {}", new_file_path);
+}    
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +171,15 @@ mod tests {
         println!("{:?}", mesh.tetras.first());
         println!("{:?}", mesh.tetras.last());
         println!("{:?}", mesh.tetras.len());
+        assert!(true);
+    }
+    #[test]
+    fn test_copy_and_write_point() {
+        let mut points = vec![
+            Point { x: [1.0, 2.0, 3.0] },
+            Point { x: [4.0, 5.0, 6.0] },
+        ];
+        copy_vtk_and_replace_point("data/Tetra.vtu", "data/Tetra_copy.vtu", &mut points);
         assert!(true);
     }
 }
