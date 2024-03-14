@@ -95,6 +95,8 @@ pub fn read_all(file_path: &str) -> Mesh {
 
 #[cfg(test)]
 mod tests {
+    use crate::vtk::vtk::inner_point_indices;
+
     use super::*;
 
     #[test]
@@ -130,6 +132,8 @@ mod tests {
         println!("{:?}", tetras.last());
         println!("{:?}", tetras.len());
 
+        let hoge = inner_point_indices(&tetras);
+
         assert!(true);
     }
     #[test]
@@ -141,7 +145,6 @@ mod tests {
         println!("{:?}", mesh.tetras.first());
         println!("{:?}", mesh.tetras.last());
         println!("{:?}", mesh.tetras.len());
-        let hoge = mesh.outer_point_indices();
         assert!(true);
     }
 }
