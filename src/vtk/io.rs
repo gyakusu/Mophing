@@ -34,7 +34,7 @@ pub fn parse_point(chars: String, points: &mut Vec<Point>) {
         .collect();
     for chunk in nums.chunks(3) {
         if chunk.len() == 3 {
-            let point = Point { x: [chunk[0], chunk[1], chunk[2]] };
+            let point = Point::new([chunk[0], chunk[1], chunk[2]]);
             points.push(point);
         }
     }
@@ -110,7 +110,8 @@ pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, poin
     new_contents.push_str(&format!("  <DataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">\n"));
 
     for point in points {
-        new_contents.push_str(&format!("    {} {} {}\n", point.x[0], point.x[1], point.x[2]));
+        let x = point.get();
+        new_contents.push_str(&format!("    {} {} {}\n", x[0], x[1], x[2]));
     }
     new_contents.push_str("  </DataArray>\n");
     new_contents.push_str("</Points>\n");
@@ -125,13 +126,15 @@ pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, poin
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
 
     #[test]
     fn test_parse_point() {
         let mut points = Vec::new();
         parse_point("1.0 2.0 3.0".to_string(), &mut points);
-        assert_eq!(points, vec![Point { x: [1.0, 2.0, 3.0] }]);
+        assert_eq!(points, vec![Point::new([1.0, 2.0, 3.0])] );
     }
 
     #[test]
@@ -176,8 +179,8 @@ mod tests {
     #[test]
     fn test_copy_and_write_point() {
         let mut points = vec![
-            Point { x: [1.0, 2.0, 3.0] },
-            Point { x: [4.0, 5.0, 6.0] },
+            Point::new([1.0, 2.0, 3.0]),
+            Point::new([4.0, 5.0, 6.0]),
         ];
         copy_vtk_and_replace_point("data/Tetra.vtu", "data/Tetra_copy.vtu", &mut points);
         assert!(true);
