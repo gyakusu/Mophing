@@ -47,38 +47,38 @@ impl Tetra {
 pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
+    pub faces: Vec<Face>,
+    pub outer_index: Vec<i64>,
     pub inner_index: Vec<i64>,
     pub neighbor_map: HashMap<i64, Vec<i64>>,
+    pub outer_map: HashMap<i64, Vec<i64>>,
 }
 
 impl Mesh {
     pub fn new(points: Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
-        let inner_index = find_inners(&tetras);
-        let neighbor_map = find_neighbors(&tetras);
+        let faces: Vec<Face> = tetras_to_faces(&tetras);   
+        let outer_index: Vec<i64> = find_outer_index(faces.clone());
+        let inner_index: Vec<i64> = find_inner_index(faces.clone(), outer_index.clone());
+        let neighbor_map: HashMap<i64, Vec<i64>> = find_neighbors(&tetras);
+        let outer_map: HashMap<i64, Vec<i64>> = find_outer_neighbors(&neighbor_map, &inner_index);
 
         Self {
-            points,
-            tetras,
+            points: points,
+            tetras: tetras,
+            faces: faces,
+            outer_index: outer_index,
             inner_index: inner_index,
             neighbor_map: neighbor_map,
+            outer_map: outer_map,
         }
     }
     pub fn laplacian_smoothing(&mut self, iteration: i64) {
         let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone(), iteration);
         self.points = new_points;
     }
-    pub fn get_inner_points(&self) -> Vec<Point> {
-        self.inner_index.iter().map(|&i| self.points[i as usize]).collect()
-    }
-    pub fn set_inner_points(&mut self, new_points: Vec<Point>) {
-        for (i, &index) in self.inner_index.iter().enumerate() {
-            self.points[index as usize] = new_points[i];
-        }
-    }
 }
-pub fn find_inners(tetras: &Vec<Tetra>) -> Vec<i64> {
-
+pub fn tetras_to_faces(tetras: &Vec<Tetra>) -> Vec<Face> {
     let mut faces: Vec<Face> = Vec::new();
     for tetra in tetras {
         for i in 0..4 {
@@ -92,27 +92,42 @@ pub fn find_inners(tetras: &Vec<Tetra>) -> Vec<i64> {
             }
         }
     }
+    faces
+}
+pub fn find_outer_index(faces: Vec<Face>) -> Vec<i64> {
+
     let mut face_counts: HashMap<Face, i64> = HashMap::new();
     for face in &faces {
         *face_counts.entry(face.clone()).or_insert(0) += 1;
     }
-    let outer_faces: HashSet<Face> = face_counts.into_iter()
-        .filter(|(_, count)| *count == 1)
-        .map(|(face, _)| face)
+    let shared_faces: HashSet<Face> = face_counts.iter()
+        .filter(|&(_face, &count)| count == 2)
+        .map(|(face, _count)| face.clone())
         .collect();
-
-    let outer_indices: HashSet<i64> = outer_faces.iter()
+    let not_shared_faces: Vec<Face> = faces.iter()
+        .filter(|face| !shared_faces.contains(face))
+        .cloned()
+        .collect();
+    let outer_map: HashSet<i64> = not_shared_faces.iter()
         .flat_map(|face| face.index.iter())
         .cloned()
         .collect();
+    let mut outer_index: Vec<i64> = outer_map.iter().cloned().collect();
+    outer_index.sort();
+    outer_index
+}
 
-    let all_indices: HashSet<i64> = faces.iter()
+pub fn find_inner_index(faces: Vec<Face>, outer_index: Vec<i64>) -> Vec<i64> {
+
+    let all_index: HashSet<i64> = faces.iter()
         .flat_map(|face| face.index.iter())
         .cloned()
         .collect();
-
-    let find_inners: Vec<i64> = all_indices.difference(&outer_indices).cloned().collect();
-    find_inners
+    let mut inner_index: Vec<i64> = all_index.difference(&outer_index.iter().cloned().collect())
+        .cloned()
+        .collect();
+    inner_index.sort();
+    inner_index
 }
 
 pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<i64, Vec<i64>> {
@@ -131,6 +146,15 @@ pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<i64, Vec<i64>> {
         value.dedup(); // 重複の削除
     }
     neighbor_map
+}
+
+pub fn find_outer_neighbors(neighbor_map: &HashMap<i64, Vec<i64>>, inner_index: &[i64]) -> HashMap<i64, Vec<i64>> {
+    let mut outer_map: HashMap<i64, Vec<i64>> = HashMap::new();
+    for (key, value) in neighbor_map {
+        let filtered_value: Vec<i64> = value.iter().filter(|&index| !inner_index.contains(index)).cloned().collect();
+        outer_map.insert(*key, filtered_value);
+    }
+    outer_map
 }
 
 pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, iteration: i64) -> Vec<Point> {
@@ -158,30 +182,42 @@ pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_m
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_find_inners() {
+    const TETRAS0 : [Tetra; 4] = [
+        Tetra { index: [0, 1, 2, 3] },
+        Tetra { index: [0, 1, 2, 4] },
+        Tetra { index: [0, 1, 3, 4] },
+        Tetra { index: [0, 2, 3, 4] },
+    ];
+    const TETRAS1 : [Tetra; 8] = [
+        Tetra { index: [0, 1, 3, 5] },
+        Tetra { index: [0, 1, 3, 6] },
+        Tetra { index: [0, 1, 4, 5] },
+        Tetra { index: [0, 1, 4, 6] },
+        Tetra { index: [0, 2, 3, 5] },
+        Tetra { index: [0, 2, 3, 6] },
+        Tetra { index: [0, 2, 4, 5] },
+        Tetra { index: [0, 2, 4, 6] },
+    ];
 
-        let tetras = vec![
-            Tetra::new([0, 1, 2, 3]).unwrap(),
-            Tetra::new([0, 1, 2, 4]).unwrap(),
-            Tetra::new([0, 1, 3, 4]).unwrap(),
-            Tetra::new([0, 2, 3, 4]).unwrap(),
-        ];
-        let find_inners = find_inners(&tetras);
-        assert_eq!(find_inners, vec![0, ]);
+    #[test]
+    fn test_find_outer_index() {
+        let tetras = TETRAS0.to_vec();
+        let faces: Vec<Face> = tetras_to_faces(&tetras);
+        let outer_index = find_outer_index(faces);
+        assert_eq!(outer_index, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_find_inner_index() {
+        let tetras = TETRAS0.to_vec();
+        let faces: Vec<Face> = tetras_to_faces(&tetras);
+        let outer_index: Vec<i64> = vec![1, 2, 3, 4];
+        let find_inner_index = find_inner_index(faces.clone(), outer_index);
+        assert_eq!(find_inner_index, vec![0, ]);
     }
     #[test]
     fn test_find_neighbors() {
-        let tetras = vec![
-            Tetra::new([0, 1, 3, 5]).unwrap(),
-            Tetra::new([0, 1, 3, 6]).unwrap(),
-            Tetra::new([0, 1, 4, 5]).unwrap(),
-            Tetra::new([0, 1, 4, 6]).unwrap(),
-            Tetra::new([0, 2, 3, 5]).unwrap(),
-            Tetra::new([0, 2, 3, 6]).unwrap(),
-            Tetra::new([0, 2, 4, 5]).unwrap(),
-            Tetra::new([0, 2, 4, 6]).unwrap(),
-        ];
+        let tetras = TETRAS1.to_vec();
         let neighbor_map = find_neighbors(&tetras);
         assert_eq!(neighbor_map.get(&0), Some(&vec![1, 2, 3, 4, 5, 6]));
         assert_eq!(neighbor_map.get(&1), Some(&vec![0, 3, 4, 5, 6]));
@@ -190,6 +226,18 @@ mod tests {
         assert_eq!(neighbor_map.get(&4), Some(&vec![0, 1, 2, 5, 6]));
         assert_eq!(neighbor_map.get(&5), Some(&vec![0, 1, 2, 3, 4]));
         assert_eq!(neighbor_map.get(&6), Some(&vec![0, 1, 2, 3, 4]));
+    }
+    #[test]
+    fn test_find_outer_neighbors() {
+        let tetras = TETRAS1.to_vec();
+        let neighbor_map = find_neighbors(&tetras);
+        let inner_index = vec![0, 6];
+        let outer_map = find_outer_neighbors(&neighbor_map, &inner_index);
+        assert_eq!(outer_map.get(&1), Some(&vec![3, 4, 5, ]));
+        assert_eq!(outer_map.get(&2), Some(&vec![3, 4, 5, ]));
+        assert_eq!(outer_map.get(&3), Some(&vec![1, 2, 5, ]));
+        assert_eq!(outer_map.get(&4), Some(&vec![1, 2, 5, ]));
+        assert_eq!(outer_map.get(&5), Some(&vec![1, 2, 3, 4]));
     }
     #[test]
     fn test_laplacian_smoothing() {
