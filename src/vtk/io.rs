@@ -110,7 +110,7 @@ pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, poin
     new_contents.push_str(&format!("  <DataArray type=\"Float32\" Name=\"Points\" NumberOfComponents=\"3\" format=\"ascii\">\n"));
 
     for point in points {
-        let x = point.get();
+        let x = point.as_f32();
         new_contents.push_str(&format!("    {} {} {}\n", x[0], x[1], x[2]));
     }
     new_contents.push_str("  </DataArray>\n");

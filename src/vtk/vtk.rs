@@ -12,17 +12,23 @@ impl Point {
             x: x,
         }
     }
-    pub fn set(&mut self, x: [f32; 3]) {
-        self.x = x;
+    pub fn on_circle(center: [f32;3], direction: [f32;3], radius: f32) -> Self {
+        Self {
+            x: [center[0] + direction[0] * radius, center[1] + direction[1] * radius, center[2] + direction[2] * radius]
+        }
     }
-    pub fn get(&self) -> [f32; 3] {
+    pub fn as_f32(&self) -> [f32;3] {
         self.x
     }
-    pub fn mul(&mut self, a: f32) {
-        self.set([self.x[0] * a, self.x[1] * a, self.x[2] * a])
+    pub fn add(&self, a: [f32;3]) -> Self {
+        Self {
+            x: [self.x[0] + a[0], self.x[1] + a[1], self.x[2] + a[2]]
+        }
     }
-    pub fn add(&mut self, point: [f32;3]) {
-        self.set([self.x[0] + point[0], self.x[1] + point[1], self.x[2] + point[2]]);
+    pub fn mul(&self, a: f32) -> Self {
+        Self {
+            x: [self.x[0] * a, self.x[1] * a, self.x[2] * a],
+        }
     }
     pub fn direction(&self, center: [f32;3]) -> [f32;3] {
         let dx = self.x[0] - center[0];
@@ -32,15 +38,14 @@ impl Point {
         if distance != 0.0 {[dx / distance, dy / distance, dz / distance]} else { [0.0, 0.0, 0.0] }
     }
     pub fn orthogonal(&self, center: [f32;3], axis: [f32;3]) -> ([f32;3], [f32;3]) {
-        let direction = self.direction(center);
-        let dot = direction[0] * axis[0] + direction[1] * axis[1] + direction[2] * axis[2];
+        let dx = self.x[0] - center[0];
+        let dy = self.x[1] - center[1];
+        let dz = self.x[2] - center[2];
+        let dot = dx * axis[0] + dy * axis[1] + dz * axis[2];
         let new_center = [center[0] + axis[0] * dot, center[1] + axis[1] * dot, center[2] + axis[2] * dot];
-        let orth = [direction[0] - dot * axis[0], direction[1] - dot * axis[1], direction[2] - dot * axis[2]];
+        let orth = [dx - dot * axis[0], dy - dot * axis[1], dz - dot * axis[2]];
         let distance = (orth[0] * orth[0] + orth[1] * orth[1] + orth[2] * orth[2]).sqrt();
         (new_center, if distance != 0.0 {[orth[0] / distance, orth[1] / distance, orth[2] / distance]} else { [0.0, 0.0, 0.0] })
-    }
-    pub fn set_on_circle(&mut self, center: [f32;3], direction: [f32;3], radius: f32) {
-        self.set([center[0] + direction[0] * radius, center[1] + direction[1] * radius, center[2] + direction[2] * radius]);
     }
 }
 
@@ -187,13 +192,8 @@ pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_m
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let mut sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, j| {
-                let mut sum = sum;
-                sum.add(new_points[*j as usize].x);
-                sum
-            });
-            sum.mul(1.0 / neighbors.len() as f32);
-            new_points[i as usize] = sum;
+            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            new_points[i as usize] = sum.mul(1.0 / neighbors.len() as f32);
         }
     }
     new_points
@@ -205,13 +205,9 @@ pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_ind
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, j| {
-                let mut sum = sum;
-                sum.add(new_points[*j as usize].x);
-                sum
-            });
+            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
             let direction = sum.direction(center);
-            new_points[i as usize].set_on_circle(center, direction, radius);
+            new_points[i as usize] = Point::on_circle(center, direction, radius);
         }
     }
     new_points
@@ -222,13 +218,10 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, j| {
-                let mut sum = sum;
-                sum.add(new_points[*j as usize].x);
-                sum
-            });
-            let (new_center, direction) = sum.orthogonal(center, axis);
-            new_points[i as usize].set_on_circle(new_center, direction, radius);
+            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let mean = sum.mul(1.0 / neighbors.len() as f32);
+            let (new_center, direction) = mean.orthogonal(center, axis);
+            new_points[i as usize] = Point::on_circle(new_center, direction, radius);
         }
     }
     new_points
@@ -336,7 +329,7 @@ mod tests {
     fn test_point_orthogonal(){
         let point = Point { x: [10.0, 10.0, 10.0] };
         let (new_center, direction) = point.orthogonal([6.0, 7.0, 10.0], [1.0, 0.0, 0.0]);
-        assert_eq!(new_center, [6.8, 7.0, 10.0]);
+        assert_eq!(new_center, [10.0, 7.0, 10.0]);
         assert_eq!(direction, [0.0, 1.0, 0.0]);
     }
 }
