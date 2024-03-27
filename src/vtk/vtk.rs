@@ -13,6 +13,11 @@ impl Point {
         }
     }
     pub fn on_circle(center: [f32;3], direction: [f32;3], radius: f32) -> Self {
+        #[cfg(debug_assertions)] {
+            if (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] - 1.0).abs() > 1.0e-9 {
+                panic!("direction must be normalized");
+            }
+        }
         Self {
             x: [center[0] + direction[0] * radius, center[1] + direction[1] * radius, center[2] + direction[2] * radius]
         }
@@ -80,7 +85,7 @@ pub struct Mesh {
     pub outer_index: Vec<i64>,
     pub inner_index: Vec<i64>,
     pub neighbor_map: HashMap<i64, Vec<i64>>,
-    pub outer_map: HashMap<i64, Vec<i64>>,
+    // // pub outer_map: HashMap<i64, Vec<i64>>,
 }
 
 impl Mesh {
@@ -90,7 +95,7 @@ impl Mesh {
         let outer_index: Vec<i64> = find_outer_index(faces.clone());
         let inner_index: Vec<i64> = find_inner_index(faces.clone(), outer_index.clone());
         let neighbor_map: HashMap<i64, Vec<i64>> = find_neighbors(&tetras);
-        let outer_map: HashMap<i64, Vec<i64>> = find_outer_neighbors(&neighbor_map, &inner_index);
+        // let outer_map: HashMap<i64, Vec<i64>> = find_outer_neighbors(&neighbor_map, &inner_index);
 
         Self {
             points: points,
@@ -99,7 +104,7 @@ impl Mesh {
             outer_index: outer_index,
             inner_index: inner_index,
             neighbor_map: neighbor_map,
-            outer_map: outer_map,
+            // outer_map: outer_map,
         }
     }
     pub fn smooth_inner(&mut self, iteration: i64) {
@@ -255,7 +260,6 @@ mod tests {
         let outer_index = find_outer_index(faces);
         assert_eq!(outer_index, vec![1, 2, 3, 4]);
     }
-
     #[test]
     fn test_find_inner_index() {
         let tetras = TETRAS0.to_vec();
