@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use xml::reader::{EventReader, XmlEvent, Error};
+use xml::writer;
+use super::vtk::Face;
 use super::vtk::Point;
 use super::vtk::Tetra;
 use super::vtk::Mesh;
@@ -51,7 +54,6 @@ pub fn parse_tetra(chars: String, tetras: &mut Vec<Tetra>) {
         }
     }
 }
-
 pub fn read_data<T, F>(file_path: &str, section_name: &str, mut parse: F) -> Vec<T>
 where
     F: FnMut(String, &mut Vec<T>),
@@ -78,21 +80,191 @@ where
     }
     data
 }
-
 pub fn read_point(file_path: &str) -> Vec<Point> {
     read_data(file_path, "Points", parse_point)
 }
-
 pub fn read_tetra(file_path: &str) -> Vec<Tetra> {
     read_data(file_path, "connectivity", parse_tetra)
 }
-
-pub fn read_all(file_path: &str) -> Mesh {
-    let points = read_point(file_path);
-    let tetras = read_tetra(file_path);
+pub fn read_vtk(vtk_path: &str) -> Mesh {
+    let points = read_point(vtk_path);
+    let tetras = read_tetra(vtk_path);
 
     let mesh = Mesh::new(points, tetras);
     mesh
+}
+pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
+    let points = read_point(vtk_path);
+    let tetras = read_tetra(vtk_path);
+
+    let faces = read_face(setting_path).unwrap();
+    let outer_index = read_index(setting_path, "outer_index").unwrap();
+    let inner_index = read_index(setting_path, "inner_index").unwrap();
+    let neighbor_map = read_map(setting_path, "neighbor_map").unwrap();
+    let outer_map = read_map(setting_path, "outer_map").unwrap();
+
+    Mesh::load(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map)
+}
+
+pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<i64>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, outer_map: HashMap<i64, Vec<i64>>) -> std::io::Result<()> {
+    let file = File::create(setting_path)?;
+    let mut writer = writer::EmitterConfig::new()
+        .perform_indent(true)
+        .create_writer(file);
+
+    let _ = writer.write(writer::XmlEvent::start_element("setting"));
+
+    let _ = writer.write(writer::XmlEvent::start_element("face"));
+    let _ = writer.write(writer::XmlEvent::characters("\n"));
+    for face in faces {
+        let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+        let _ = writer.write(writer::XmlEvent::characters(&face_str));
+        let _ = writer.write(writer::XmlEvent::characters("\n"));
+    }
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    let _ = writer.write(writer::XmlEvent::start_element("outer_index"));
+    let _ = writer.write(writer::XmlEvent::characters("\n"));
+    for i in outer_index {
+        let _ = writer.write(writer::XmlEvent::characters(&i.to_string()));
+        let _ = writer.write(writer::XmlEvent::characters("\n"));
+    }
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    let _ = writer.write(writer::XmlEvent::start_element("inner_index"));
+    let _ = writer.write(writer::XmlEvent::characters("\n"));
+    for i in inner_index {
+        let _ = writer.write(writer::XmlEvent::characters(&i.to_string()));
+        let _ = writer.write(writer::XmlEvent::characters("\n"));
+    }
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    let _ = writer.write(writer::XmlEvent::start_element("neighbor_map"));
+    let _ = writer.write(writer::XmlEvent::characters("\n"));
+    for (key, values) in neighbor_map {
+        let values_str = values.into_iter().map(|v| v.to_string()).collect::<Vec<String>>().join(" ");
+        let line = format!("{} {}", key, values_str);
+        let _ = writer.write(writer::XmlEvent::characters(&line));
+        let _ = writer.write(writer::XmlEvent::characters("\n"));
+    }
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    let _ = writer.write(writer::XmlEvent::start_element("outer_map"));
+    let _ = writer.write(writer::XmlEvent::characters("\n"));
+    for (key, values) in outer_map {
+        let values_str = values.into_iter().map(|v| v.to_string()).collect::<Vec<String>>().join(" ");
+        let line = format!("{} {}", key, values_str);
+        let _ = writer.write(writer::XmlEvent::characters(&line));
+        let _ = writer.write(writer::XmlEvent::characters("\n"));
+    }
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    let _ = writer.write(writer::XmlEvent::end_element());
+
+    Ok(())
+}
+
+pub fn read_face(setting_path: &str) -> std::io::Result<Vec<Face>> {
+    let file = File::open(setting_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut faces = Vec::new();
+    let mut current_face = Vec::new();
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) if name.local_name == "face" => {
+                current_face.clear();
+            }
+            Ok(XmlEvent::Characters(s)) => {
+                let numbers: Vec<i64> = s.split_whitespace().map(|s| s.parse().unwrap()).collect();
+                current_face.extend(numbers);
+            }
+            Ok(XmlEvent::EndElement { name }) if name.local_name == "face" => {
+                while current_face.len() >= 3 {
+                    let face = Face::new([current_face[0], current_face[1], current_face[2]]).unwrap();
+                    faces.push(face);
+                    current_face.drain(0..3);
+                }
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(faces)
+}
+
+pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<i64>> {
+    let file = File::open(setting_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut index = Vec::new();
+    let mut is_target_section = false;
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                is_target_section = name.local_name == target;
+            }
+            Ok(XmlEvent::Characters(s)) if is_target_section => {
+                let numbers: Vec<i64> = s.split_whitespace()
+                                         .filter_map(|s| s.parse().ok())
+                                         .collect();
+                index.extend(numbers);
+            }
+            Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
+                is_target_section = false;
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(index)
+}
+
+pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<i64, Vec<i64>>> {
+    let file = File::open(setting_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut neighbor_map = HashMap::new();
+    let mut is_target_section = false;
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                is_target_section = name.local_name == target;
+            }
+            Ok(XmlEvent::Characters(s)) if is_target_section => {
+                for line in s.lines() {
+                    let numbers: Vec<i64> = line.split_whitespace()
+                                                .filter_map(|s| s.parse().ok())
+                                                .collect();
+                    if let Some(key) = numbers.get(0) {
+                        let values = numbers[1..].to_vec();
+                        neighbor_map.insert(*key, values);
+                    }
+                }
+            }
+            Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
+                is_target_section = false;
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(neighbor_map)
 }
 
 pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, points: &mut Vec<Point>) {
@@ -123,6 +295,7 @@ pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, poin
 
     println!("The new file has been created: {}", new_file_path);
 }    
+
 
 #[cfg(test)]
 mod tests {
@@ -166,8 +339,8 @@ mod tests {
         assert!(true);
     }
     #[test]
-    fn test_read_all() {
-        let mesh = read_all("data/Tetra.vtu");
+    fn test_read_vtk() {
+        let mesh = read_vtk("data/Tetra.vtu");
         println!("{:?}", mesh.points.first());
         println!("{:?}", mesh.points.last());
         println!("{:?}", mesh.points.len());
@@ -184,6 +357,38 @@ mod tests {
         ];
         copy_vtk_and_replace_point("data/Tetra.vtu", "data/Tetra_copy.vtu", &mut points);
         assert!(true);
+    }
+    #[test]
+    fn test_write_and_read_setting() {
+        let mesh = read_vtk("data/Tetra.vtu");
+
+        // mesh.save();
+        let(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map) = mesh.save();
+        
+        _ = write_setting("data/Tetra_setting.xml", faces.clone(), outer_index.clone(), inner_index.clone(), neighbor_map.clone(), outer_map.clone());
+
+        let faces0 = read_face("data/Tetra_setting.xml").unwrap();
+        let outer_index0 = read_index("data/Tetra_setting.xml", "outer_index").unwrap();
+        let inner_index0 = read_index("data/Tetra_setting.xml", "inner_index").unwrap();
+        let neighbor_map0 = read_map("data/Tetra_setting.xml", "neighbor_map").unwrap();
+        let outer_map0 = read_map("data/Tetra_setting.xml", "outer_map").unwrap();
+
+        let _ = Mesh::load(points, tetras, faces0.clone(), outer_index0.clone(), inner_index0.clone(), neighbor_map0.clone(), outer_map0.clone());
+
+        assert_eq!(faces.clone().first(), faces0.clone().first());
+        assert_eq!(faces.clone().last(), faces0.clone().last());
+
+        assert_eq!(outer_index.clone().first(), outer_index0.clone().first());
+        assert_eq!(outer_index.clone().last(), outer_index0.clone().last());
+
+        assert_eq!(inner_index.clone().first(), inner_index0.clone().first());
+        assert_eq!(inner_index.clone().last(), inner_index0.clone().last());
+
+        assert_eq!(neighbor_map.clone().get(&1).unwrap().first(), neighbor_map0.clone().get(&1).unwrap().first());
+        assert_eq!(neighbor_map.clone().get(&1).unwrap().last(), neighbor_map0.clone().get(&1).unwrap().last());
+
+        assert_eq!(outer_map.clone().get(&1).unwrap().first(), outer_map0.clone().get(&1).unwrap().first());
+        assert_eq!(outer_map.clone().get(&1).unwrap().last(), outer_map0.clone().get(&1).unwrap().last());
     }
 }
 

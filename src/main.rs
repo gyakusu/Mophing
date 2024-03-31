@@ -3,7 +3,7 @@ use mophing::vtk::io;
 fn main() {
 
     let old_file_path = "data/Tetra.vtu";
-    let mut mesh = io::read_all(old_file_path);
+    let mut mesh = io::read_vtk(old_file_path);
 
     let mut twice_point = mesh.points.clone();
     twice_point.iter_mut().for_each(|p| {
