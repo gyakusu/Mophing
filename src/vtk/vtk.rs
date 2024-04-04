@@ -9,10 +9,10 @@ pub struct Point {
 impl Point {
     pub fn new(x: [f32; 3]) -> Self {
         Self {
-            x: x,
+            x,
         }
     }
-    pub fn on_circle(center: [f32;3], direction: [f32;3], radius: f32) -> Self {
+    pub fn project_on_circle(center: [f32;3], direction: [f32;3], radius: f32) -> Self {
         #[cfg(debug_assertions)] {
             if (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] - 1.0).abs() > 1.0e-9 {
                 panic!("direction must be normalized");
@@ -147,13 +147,13 @@ impl Mesh {
 
     pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, outer_index: Vec<i64>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, outer_map: HashMap<i64, Vec<i64>>) -> Self {
         Self {
-            points: points,
-            tetras: tetras,
-            faces: faces,
-            outer_index: outer_index,
-            inner_index: inner_index,
-            neighbor_map: neighbor_map,
-            outer_map: outer_map,
+            points,
+            tetras,
+            faces,
+            outer_index,
+            inner_index,
+            neighbor_map,
+            outer_map,
         }
     }
     pub fn smooth_inner(&mut self, iteration: i64) {
@@ -261,7 +261,7 @@ pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_ind
             let neighbors = &outer_map[&i];
             let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
             let direction = sum.direction(center);
-            new_points[i as usize] = Point::on_circle(center, direction, radius);
+            new_points[i as usize] = Point::project_on_circle(center, direction, radius);
         }
     }
     new_points
@@ -275,7 +275,7 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index
             let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             let (new_center, direction) = mean.orthogonal(center, axis);
-            new_points[i as usize] = Point::on_circle(new_center, direction, radius);
+            new_points[i as usize] = Point::project_on_circle(new_center, direction, radius);
         }
     }
     new_points
