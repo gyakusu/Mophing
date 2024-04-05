@@ -1,79 +1,86 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
+extern crate nalgebra as na;
+use na::Vector3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Point {
-    x: [f32; 3],
+    x: Vector3<f32>
 }
 
 impl Point {
-    pub fn new(x: [f32; 3]) -> Self {
+    pub fn new(x: Vector3<f32>) -> Self {
         Self {
             x,
         }
     }
-    pub fn project_on_circle(center: [f32;3], direction: [f32;3], radius: f32) -> Self {
+    pub fn zero() -> Self {
+        Self {
+            x: Vector3::zeros()
+        }
+    }
+    pub fn project_on_circle(center: Vector3<f32>, direction: Vector3<f32>, radius: f32) -> Self {
         #[cfg(debug_assertions)] {
-            if (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2] - 1.0).abs() > 1.0e-9 {
+            if (direction.norm() - 1.0).abs() > 1e-9 {
                 panic!("direction must be normalized");
             }
         }
         Self {
-            x: [center[0] + direction[0] * radius, center[1] + direction[1] * radius, center[2] + direction[2] * radius]
+            x: center + direction * radius
         }
     }
-    pub fn as_f32(&self) -> [f32;3] {
+    pub fn as_f32(&self) -> Vector3<f32> {
         self.x
     }
-    pub fn add(&self, a: [f32;3]) -> Self {
+    pub fn add(&self, a: Vector3<f32>) -> Self {
         Self {
-            x: [self.x[0] + a[0], self.x[1] + a[1], self.x[2] + a[2]]
+            x: self.x + a
         }
     }
     pub fn mul(&self, a: f32) -> Self {
         Self {
-            x: [self.x[0] * a, self.x[1] * a, self.x[2] * a],
+            x: self.x * a
         }
     }
-    pub fn direction(&self, center: [f32;3]) -> [f32;3] {
-        let dx = [self.x[0] - center[0], self.x[1] - center[1], self.x[2] - center[2]];
-        let distance = (dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]).sqrt();
-        let direction = if distance != 0.0 {[dx[0] / distance, dx[1] / distance, dx[2] / distance]} else { [0.0, 0.0, 0.0] };
+    pub fn direction(&self, center: Vector3<f32>) -> Vector3<f32> {
+        let dx: Vector3<f32> = self.x - center;
+        let distance = dx.norm();
+        let direction: Vector3<f32> = if distance != 0.0 {dx / distance} else { Vector3::zeros() };
         direction
     }
-    pub fn orthogonal(&self, center: [f32;3], axis: [f32;3]) -> ([f32;3], [f32;3]) {
+    pub fn orthogonal(&self, center: Vector3<f32>, axis: Vector3<f32>) -> (Vector3<f32>, Vector3<f32>) {
         #[cfg(debug_assertions)] {
-            if (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2] - 1.0).abs() > 1.0e-9 {
+            if (axis.norm() - 1.0).abs() > 1.0e-9 {
                 panic!("axis must be normalized");
             }
         }
-        let dx = [self.x[0] - center[0], self.x[1] - center[1], self.x[2] - center[2]];
-        let dot = dx[0] * axis[0] + dx[1] * axis[1] + dx[2] * axis[2];
-        let new_center = [center[0] + axis[0] * dot, center[1] + axis[1] * dot, center[2] + axis[2] * dot];
-        let orth = [dx[0] - dot * axis[0], dx[1] - dot * axis[1], dx[2] - dot * axis[2]];
-        let distance = (orth[0] * orth[0] + orth[1] * orth[1] + orth[2] * orth[2]).sqrt();
-        let direction = if distance != 0.0 {[orth[0] / distance, orth[1] / distance, orth[2] / distance]} else { [0.0, 0.0, 0.0] };
+        let dx: Vector3<f32> = self.x - center;
+        let dot = dx.dot(&axis);
+        let new_center: Vector3<f32> = center + axis * dot;
+        let orth: Vector3<f32> = dx - axis * dot;
+        let distance = orth.norm();
+        let direction: Vector3<f32> = if distance != 0.0 {orth / distance} else { Vector3::zeros() };
         (new_center, direction)
     }
-    pub fn orthogonal_cone(&self, center: [f32;3], axis: [f32;3], ratio: f32) -> Self {
+    pub fn orthogonal_cone(&self, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Self {
         #[cfg(debug_assertions)] {
-            if (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2] - 1.0).abs() > 1.0e-9 {
+            if (axis.norm() - 1.0).abs() > 1.0e-9 {
                 panic!("axis must be normalized");
             }
         }
-        let dx = [self.x[0] - center[0], self.x[1] - center[1], self.x[2] - center[2]];
-        let dot = dx[0] * axis[0] + dx[1] * axis[1] + dx[2] * axis[2];
-        let orth = [dx[0] - dot * axis[0], dx[1] - dot * axis[1], dx[2] - dot * axis[2]];
-        let distance = (orth[0] * orth[0] + orth[1] * orth[1] + orth[2] * orth[2]).sqrt();
+        let dx: Vector3<f32> = self.x - center;
+        let dot = dx.dot(&axis);
+        let orth: Vector3<f32> = dx - axis * dot;
+        let distance = orth.norm();
         if distance == 0.0 {
             return self.clone();
         }
         let new_length = dot + distance * ratio;
-        let new_center = [center[0] + axis[0] * new_length, center[1] + axis[1] * new_length, center[2] + axis[2] * new_length]; 
-        let direction = [self.x[0] - new_center[0], self.x[1] - new_center[1], self.x[2] - new_center[2]];
+        let new_center: Vector3<f32> = center + axis * new_length;
+        let direction: Vector3<f32> = self.x - new_center;
         let new_distance = new_length * ratio / (1. + ratio * ratio);
-        let new_direction = [direction[0] * new_distance / distance, direction[1] * new_distance / distance, direction[2] * new_distance / distance];
-        let new_point = [new_center[0] + new_direction[0], new_center[1] + new_direction[1], new_center[2] + new_direction[2]];
+        let new_direction: Vector3<f32> = direction * new_distance / distance;
+        let new_point: Vector3<f32> = new_center + new_direction;
         Self {
             x: new_point,
         }        
@@ -246,33 +253,33 @@ pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_m
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
             new_points[i as usize] = sum.mul(1.0 / neighbors.len() as f32);
         }
     }
     new_points
 }
 
-pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: [f32; 3], radius: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, radius: f32, iteration: i64) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
-            let direction = sum.direction(center);
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let direction: Vector3<f32> = sum.direction(center);
             new_points[i as usize] = Point::project_on_circle(center, direction, radius);
         }
     }
     new_points
 }
-pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: [f32; 3], axis: [f32; 3], radius: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32, iteration: i64) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             let (new_center, direction) = mean.orthogonal(center, axis);
             new_points[i as usize] = Point::project_on_circle(new_center, direction, radius);
@@ -280,14 +287,14 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: [f32; 3], axis: [f32; 3], ratio: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32, iteration: i64) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point { x: [0.0, 0.0, 0.0] }, |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             new_points[i as usize] = mean.orthogonal_cone(center, axis, ratio);
         }
@@ -318,15 +325,15 @@ mod tests {
     #[test]
     fn test_find_outer_index() {
         let tetras = TETRAS0.to_vec();
-        let faces: Vec<Face> = tetras_to_faces(&tetras);
+        let faces = tetras_to_faces(&tetras);
         let outer_index = find_outer_index(faces);
         assert_eq!(outer_index, vec![1, 2, 3, 4]);
     }
     #[test]
     fn test_find_inner_index() {
         let tetras = TETRAS0.to_vec();
-        let faces: Vec<Face> = tetras_to_faces(&tetras);
-        let outer_index: Vec<i64> = vec![1, 2, 3, 4];
+        let faces = tetras_to_faces(&tetras);
+        let outer_index = vec![1, 2, 3, 4];
         let find_inner_index = find_inner_index(faces.clone(), outer_index);
         assert_eq!(find_inner_index, vec![0, ]);
     }
@@ -360,13 +367,13 @@ mod tests {
         let sqrt27 = sqrt3 * 3.0;
 
         let points = vec![
-            Point { x: [6.0, 1.0, 0.0] }, // 0
-            Point { x: [7.0, 0.0, 1.0] }, // 1
-            Point { x: [8.0, -1.0, 0.0] }, // 2
-            Point { x: [9.0, 0.0, -1.0] }, // 3
-            Point { x: [ 6.0, 0.0, 0.0] }, // 4
-            Point { x: [-3.0,  sqrt27, 0.0] }, // 5
-            Point { x: [-3.0, -sqrt27, 0.0] }, // 6
+            Point { x: Vector3::new(6.0, 1.0, 0.0) }, // 0
+            Point { x: Vector3::new(7.0, 0.0, 1.0) }, // 1
+            Point { x: Vector3::new(8.0, -1.0, 0.0) }, // 2
+            Point { x: Vector3::new(9.0, 0.0, -1.0) }, // 3
+            Point { x: Vector3::new( 6.0, 0.0, 0.0) }, // 4
+            Point { x: Vector3::new(-3.0,  sqrt27, 0.0) }, // 5
+            Point { x: Vector3::new(-3.0, -sqrt27, 0.0) }, // 6
         ];
         let inner_index = vec![0, 1, 2, 3];
         let neighbor_map = {
@@ -379,37 +386,48 @@ mod tests {
         };
         let new_points = laplacian_smoothing(points, inner_index, neighbor_map, 100);
 
-        assert_eq!(new_points[0], Point { x: [ 0.0,    0.0, 0.0] });
-        assert_eq!(new_points[1], Point { x: [ 1.0,  sqrt3, 0.0] });
-        assert_eq!(new_points[2], Point { x: [ 1.0, -sqrt3, 0.0] });
-        assert_eq!(new_points[3], Point { x: [-2.0,    0.0, 0.0] });
+        assert_eq!(new_points[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
+        assert_eq!(new_points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_eq!(new_points[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
+        assert_eq!(new_points[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
     }
 
     #[test]
     fn test_point_direction(){
-        let point = Point { x: [10.0, 10.0, 10.0] };
-        let direction = point.direction([6.0, 7.0, 10.0]);
-        assert_eq!(direction, [0.8, 0.6, 0.0]);
+        let point = Point { x: Vector3::new(10.0, 10.0, 10.0) };
+        let direction: Vector3<f32> = point.direction(Vector3::new(6.0, 7.0, 10.0));
+        assert_eq!(direction, Vector3::new(0.8, 0.6, 0.0));
     }
     #[test]
     fn test_point_orthogonal(){
-        let point = Point { x: [10.0, 10.0, 10.0] };
-        let (new_center, direction) = point.orthogonal([6.0, 7.0, 10.0], [1.0, 0.0, 0.0]);
-        assert_eq!(new_center, [10.0, 7.0, 10.0]);
-        assert_eq!(direction, [0.0, 1.0, 0.0]);
+        let point = Point { x: Vector3::new(10.0, 10.0, 10.0) };
+        let center:Vector3<f32> = Vector3::new(6.0, 7.0, 10.0);
+        let axis:Vector3<f32> = Vector3::new(1.0, 0.0, 0.0);
+        let (new_center, direction) = point.orthogonal(center, axis);
+        assert_eq!(new_center, Vector3::new(10.0, 7.0, 10.0));
+        assert_eq!(direction, Vector3::new(0.0, 1.0, 0.0));
     }
     #[test]
     fn test_point_orthogonal_cone(){
         let sqrt1_3  = 1.7320508075688772 / 3.0;
-        let point = Point { x: [10.0, 10.0, 10.0] };
-        let new_point0 = point.orthogonal_cone([9.0, 10.0 - sqrt1_3, 10.0], [1.0, 0.0, 0.0], sqrt1_3);
-        assert_eq!(new_point0, Point { x: [10.0, 10.0, 10.0] });
-        let new_point1 = point.orthogonal_cone([10.0, 10.0, 10.0], [1.0, 0.0, 0.0], sqrt1_3);
+        let point = Point { x: Vector3::new(10.0, 10.0, 10.0) };
+        let center0:Vector3<f32> = Vector3::new(9.0, 10.0 - sqrt1_3, 10.0);
+        let center1:Vector3<f32> = Vector3::new(10.0, 10.0, 10.0);
+        let center2:Vector3<f32> = Vector3::new(5.0, 10.0, 10.0);
+        let center3:Vector3<f32> = Vector3::new(9.0, 10.0, 7.0);
+        let axis:Vector3<f32> = Vector3::new(1.0, 0.0, 0.0);
+
+        let new_point0 = point.orthogonal_cone(center0, axis, sqrt1_3);
+        assert_eq!(new_point0, point);
+
+        let new_point1 = point.orthogonal_cone(center1, axis, sqrt1_3);
         assert_eq!(new_point1, point);
-        let new_point2 = point.orthogonal_cone([5.0, 10.0, 10.0], [1.0, 0.0, 0.0], sqrt1_3);
+
+        let new_point2 = point.orthogonal_cone(center2, axis, sqrt1_3);
         assert_eq!(new_point2, point);
-        let new_point3 = point.orthogonal_cone([9.0, 10.0, 7.0], [1.0, 0.0, 0.0], 1.);
-        assert_eq!(new_point3, Point { x: [11.0, 10.0, 9.0] });
+
+        let new_point3 = point.orthogonal_cone(center3, axis, 1.0);
+        assert_eq!(new_point3, Point { x: Vector3::new(11.0, 10.0, 9.0) });
     }
 }
 

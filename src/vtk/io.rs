@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
+use nalgebra::Vector3;
 use xml::reader::{EventReader, XmlEvent, Error};
 use xml::writer;
 use super::vtk::Face;
@@ -37,7 +38,7 @@ pub fn parse_point(chars: String, points: &mut Vec<Point>) {
         .collect();
     for chunk in nums.chunks(3) {
         if chunk.len() == 3 {
-            let point = Point::new([chunk[0], chunk[1], chunk[2]]);
+            let point = Point::new(Vector3::new(chunk[0], chunk[1], chunk[2]));
             points.push(point);
         }
     }
@@ -307,7 +308,7 @@ mod tests {
     fn test_parse_point() {
         let mut points = Vec::new();
         parse_point("1.0 2.0 3.0".to_string(), &mut points);
-        assert_eq!(points, vec![Point::new([1.0, 2.0, 3.0])] );
+        assert_eq!(points, vec![Point::new(Vector3::new(1.0, 2.0, 3.0))] );
     }
 
     #[test]
@@ -352,8 +353,8 @@ mod tests {
     #[test]
     fn test_copy_and_write_point() {
         let mut points = vec![
-            Point::new([1.0, 2.0, 3.0]),
-            Point::new([4.0, 5.0, 6.0]),
+            Point::new(Vector3::new(1.0, 2.0, 3.0)),
+            Point::new(Vector3::new(4.0, 5.0, 6.0)),
         ];
         copy_vtk_and_replace_point("data/Tetra.vtu", "data/Tetra_copy.vtu", &mut points);
         assert!(true);
