@@ -125,7 +125,7 @@ impl Tetra {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,

@@ -10,6 +10,7 @@ use super::vtk::Face;
 use super::vtk::Point;
 use super::vtk::Tetra;
 use super::vtk::Mesh;
+use super::brg::Brg;
 
 pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_section: &mut bool) {
     match e {
@@ -267,8 +268,48 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<i64
     }
     Ok(neighbor_map)
 }
+pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, Vec<i64>>> {
 
-pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, points: &mut Vec<Point>) {
+    let file = File::open(file_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut edges = HashMap::new();
+    let mut current_edge = String::new();
+    let mut in_edge_section = false;
+    
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                if name.local_name == section {
+                    in_edge_section = true;
+                } else if in_edge_section {
+                    current_edge = name.local_name;
+                }
+            }
+            Ok(XmlEvent::EndElement { name, .. }) => {
+                if name.local_name == section {
+                    in_edge_section = false;
+                }
+            }
+            Ok(XmlEvent::Characters(s)) => {
+                if in_edge_section {
+                    let numbers: Vec<i64> = s.split_whitespace()
+                                            .filter_map(|s| s.parse().ok())
+                                            .collect();
+                    edges.insert(current_edge.clone(), numbers);
+                }
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(edges)
+}
+pub fn copy_vtk_and_replace_point(old_file_path: &str, new_file_path: &str, points: &Vec<Point>) {
     let mut old_file = File::open(old_file_path).unwrap();
     let mut contents = String::new();
     old_file.read_to_string(&mut contents).unwrap();
@@ -360,6 +401,16 @@ mod tests {
         assert!(true);
     }
     #[test]
+    fn test_read_index_from_xml() {
+        let file_path = "data/face_and_edge_index.xml";
+        let section0 = "edge";
+        let section1 = "face";
+        let edges = read_index_from_xml(file_path, section0).unwrap();
+        let faces = read_index_from_xml(file_path, section1).unwrap();
+        // 目視で確認してください．
+        assert!(true);
+    }
+    #[test]
     fn test_write_and_read_setting() {
         let mesh = read_vtk("data/Tetra.vtu");
 
@@ -390,6 +441,21 @@ mod tests {
 
         assert_eq!(outer_map.clone().get(&1).unwrap().first(), outer_map0.clone().get(&1).unwrap().first());
         assert_eq!(outer_map.clone().get(&1).unwrap().last(), outer_map0.clone().get(&1).unwrap().last());
+    }
+    #[test]
+    fn test_read_vtk_and_setting() {
+        let mesh0 = read_vtk_and_setting("data/Tetra.vtu", "data/Tetra_setting.xml");
+        let mesh1 = read_vtk("data/Tetra.vtu");
+
+        assert_eq!(mesh0.points.last(), mesh1.points.last());
+        assert_eq!(mesh0.outer_index.last(), mesh1.outer_index.last());
+        assert_eq!(mesh0.inner_index.last(), mesh1.inner_index.last());
+        assert_eq!(mesh0.faces.last(), mesh1.faces.last());
+        assert_eq!(mesh0.tetras.last(), mesh1.tetras.last());
+        assert_eq!(mesh0.neighbor_map.get(&1).unwrap().last(), mesh1.neighbor_map.get(&1).unwrap().last());
+        assert_eq!(mesh0.outer_map.get(&1).unwrap().last(), mesh1.outer_map.get(&1).unwrap().last());
+
+        assert!(true);
     }
 }
 
