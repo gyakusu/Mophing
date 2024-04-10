@@ -1,7 +1,6 @@
 use std::f32::consts::PI;
 use std::vec;
 
-use na::ComplexField;
 use nalgebra as na;
 use na::Vector3;
 
@@ -102,9 +101,9 @@ impl CageParameter {
             },
             neck: NeckParameter {
                 x: Vector3::new(0.0, 2.65e-3, 2.00e-3 - 0.30e-3),
-                r: 1.30e-3,
+                r: 1.20e-3,
                 h: 2.45e-3,
-                dh: 0.152e-3,
+                dh: 0.1519e-3,
                 h_ratio: 0.355,
                 r_ratio: 0.55,
             },
@@ -160,7 +159,7 @@ impl Brg {
     }
     fn get_asymmetry_curve_top_params(&self, param: &CageParameter, h: f32, n: usize, r0: f32, r1: f32, r2: f32) -> (Vector3<f32>, f32, f32, f32) {
         let center: Vector3<f32> = Vector3::new(0.0, 0.0, h);
-        let y = param.neck.x[1];
+        let y = param.pocket.x[1];
         let theta = (calculate_x_diameter(r0, y, r1).0 / r0).asin();
         let theta1 = (calculate_x_diameter(r0, y, r2).0 / r0).asin();
         let dtheta = (theta1 - theta) / (n as f32 - 1.0);
@@ -177,12 +176,23 @@ impl Brg {
         let radius = r;
         (center, -theta, dtheta, radius)
     }
+    fn get_ellipse_params(&self, param: &CageParameter, r: f32, n: usize) -> (f32, f32, f32, f32, f32, f32, f32) {
+        let x = param.pocket.x[0];
+        let y = param.pocket.x[1];
+        let z = param.pocket.x[2];
+        let dx = calculate_x_diameter(r, y, param.pocket.r).0;
+        let dz = calculate_z_diameter(r, y, param.pocket.r);
+        let cos_theta = (param.neck.h - param.neck.dh - z) / dz;
+        let theta = cos_theta.acos();
+        let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);        
+        (x, z, r, dx, dz, theta, dtheta)
+    }
     pub fn linspace(&self, name: &str) -> Vec<Vector3<f32>> {
     
         let param = &self.param;
         let n = self.edges.get(name).unwrap().len();
 
-        let r_middle = cutted_sphire_radius(param.pocket.r, param.neck.h - param.neck.x[2] - param.neck.dh); // 円筒部における半径
+        let r_middle = cutted_sphire_radius(param.pocket.r, param.neck.h - param.pocket.x[2] - param.neck.dh); // 円筒部における半径
         let r_neck   = cutted_sphire_radius(param.neck.r, param.h1 - param.neck.x[2]); // 肩部における爪部の半径
         let r_top    = cutted_sphire_radius(param.neck.r, param.neck.h - param.neck.x[2]); // 頂部における爪外径の半径
         let r_apt    = r_middle + param.neck.dh * param.neck.r_ratio; // 頂部における爪内径の半径
@@ -216,7 +226,7 @@ impl Brg {
             },
             "curve_top_in_left" | "curve_top_in_right" => {
                 let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(param, param.neck.h, n, param.r0, r_top, r_apt);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, -theta, dtheta)));
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, -theta, -dtheta)));
             }
             "curve_top_out_left" | "curve_top_out_right" => {
                 let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(param, param.neck.h, n, param.r1, r_top, r_apt);
@@ -227,87 +237,70 @@ impl Brg {
                 let dr = (param.r1 - param.bevel - r0) / (n as f32 - 1.0);
                 let sin = param.theta0.sin();
                 let cos = param.theta0.cos();
-                let z0 = param.h0;
-                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, z0);
+                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0);
                 let dx: Vector3<f32> = dr * Vector3::new(sin, cos, 0.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x, dx)));
             },
             "straight_in_left" | "straight_in_right" => {
                 let x = param.r0 * param.theta0.sin();
                 let y = param.r0 * param.theta0.cos();
-                let z0 = param.h0 + param.bevel;
-                let z1 = param.h1;
-                let x0: Vector3<f32> = Vector3::new(x, y, z0);
-                let x1: Vector3<f32> = Vector3::new(x, y, z1);
+                let x0: Vector3<f32> = Vector3::new(x, y, param.h0 + param.bevel);
+                let x1: Vector3<f32> = Vector3::new(x, y, param.h1);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             },
             "straight_out_left" | "straight_out_right" => {
                 let x = param.r1 * param.theta0.sin();
                 let y = param.r1 * param.theta0.cos();
-                let z0 = param.h0 + param.bevel;
-                let z1 = param.h1;
-                let x0: Vector3<f32> = Vector3::new(x, y, z0);
-                let x1: Vector3<f32> = Vector3::new(x, y, z1);
+                let x0: Vector3<f32> = Vector3::new(x, y, param.h0 + param.bevel);
+                let x1: Vector3<f32> = Vector3::new(x, y, param.h1);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             },
             "straight_top_left" | "straight_top_right" => {
                 let sin = param.theta0.sin();
                 let cos = param.theta0.cos();
-                let r0 = param.r0;
-                let r1 = param.r1;
+                let (r0, r1) = (param.r0, param.r1);
                 let dr = (r1 - r0) / (n as f32 - 1.0);
-                let z0 = param.h1;
-                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, z0);
+                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h1);
                 let dx: Vector3<f32> = dr * Vector3::new(sin, cos, 0.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x, dx)));
             },
             "slope_bottom_left_in" | "slope_bottom_right_in" => {
                 let sin = param.theta0.sin();
                 let cos = param.theta0.cos();
-                let r0 = param.r0;
-                let r1 = param.r0 + param.bevel;
-                let z0 = param.h0 + param.bevel;
-                let z1 = param.h0;
-                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, z0);
-                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, z1);
+                let (r0, r1) = (param.r0, param.r0 + param.bevel);
+                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0 + param.bevel);
+                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             }
             "slope_bottom_left_out" | "slope_bottom_right_out" => {
                 let sin = param.theta0.sin();
                 let cos = param.theta0.cos();
-                let r0 = param.r1 - param.bevel;
-                let r1 = param.r1;
-                let z0 = param.h0;
-                let z1 = param.h0 + param.bevel;
-                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, z0);
-                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, z1);
+                let(r0, r1) = (param.r1 - param.bevel, param.r1);
+                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0);
+                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0 + param.bevel);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             }
             "slope_in_top_left" | "slope_in_top_right" => {
                 let y = param.neck.x[1];
-                let (x0, y0) = calculate_x_diameter(param.r0, y, r_top);
-                let (x1, y1) = calculate_x_diameter(param.r0, y, r_apt);
-                let z0 = param.neck.h;
-                let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
-                let x0: Vector3<f32> = Vector3::new(-x0, y0, z0);
-                let x1: Vector3<f32> = Vector3::new(-x1, y1, z1);
-                let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
-                (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
+                let (x0, y0) = calculate_x_diameter(param.r0, y, r_apt);
+                let (x1, y1) = calculate_x_diameter(param.r0, y, r_middle);
+                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, param.neck.h);
+                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, param.neck.h - param.neck.dh * param.neck.h_ratio);
+                let dx: Vector3<f32> = (xyz1 - xyz0) / (n as f32 - 1.0);
+                (0..n).for_each(|i| points.push(linspace_line(i, xyz0, dx)));
             }
             "slope_out_top_left" | "slope_out_top_right" => {
                 let y = param.neck.x[1];
-                let (x0, y0) = calculate_x_diameter(param.r1, y, r_top);
-                let (x1, y1) = calculate_x_diameter(param.r1, y, r_apt);
-                let z0 = param.neck.h;
-                let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
-                let x0: Vector3<f32> = Vector3::new(-x0, y0, z0);
-                let x1: Vector3<f32> = Vector3::new(-x1, y1, z1);
-                let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
-                (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
+                let (x0, y0) = calculate_x_diameter(param.r1, y, r_apt);
+                let (x1, y1) = calculate_x_diameter(param.r1, y, r_middle);
+                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, param.neck.h);
+                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, param.neck.h - param.neck.dh * param.neck.h_ratio);
+                let dx: Vector3<f32> = (xyz1 - xyz0) / (n as f32 - 1.0);
+                (0..n).for_each(|i| points.push(linspace_line(i, xyz0, dx)));
             }
             "collar_left_out" | "collar_right_out" => {
                 let (center, theta, dtheta, radius) = self.get_collar_params(param, param.h1, n, r_neck, param.neck.x[0], param.neck.x[1]);
@@ -315,44 +308,26 @@ impl Brg {
             }
             "collar_left_middle" | "collar_right_middle" => {
                 let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h, n, r_top, param.neck.x[0], param.neck.x[1]);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             }
             "collar_left_in" | "collar_right_in" => {
                 let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h, n, r_apt, param.neck.x[0], param.neck.x[1]);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "collar_bottom_left" | "collar_bottom_right" => {
                 let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h - param.neck.dh, n, r_middle, param.pocket.x[0], param.pocket.x[1]);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "collar_middle_left" | "collar_middle_right" => {
                 let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h - param.neck.dh * param.neck.h_ratio, n, r_middle, param.pocket.x[0], param.pocket.x[1]);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "ellipse_in_center" => {
-                let x = param.pocket.x[0];
-                let y = param.pocket.x[1];
-                let z = param.pocket.x[2];
-                let r = param.r0;
-                let dx = calculate_x_diameter(r, y, param.pocket.r).0;
-                let dz = calculate_z_diameter(r, y, param.pocket.r);
-                let cos_theta = (param.neck.h - param.neck.dh - z) / dz;
-                let theta = cos_theta.acos();
-                let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);
-                // let dtheta = (2.0 * theta) / (n as f32 - 1.0);
+                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(param, param.r0, n);
                 (0..n).for_each(|i| points.push(linspace_ellipse(i, x, z, r, dx, dz, -theta, -dtheta)));
             },
             "ellipse_out_center" => {
-                let x = param.pocket.x[0];
-                let y = param.pocket.x[1];
-                let z = param.pocket.x[2];
-                let r = param.r1;
-                let dx = calculate_x_diameter(r, y, param.pocket.r).0;
-                let dz = calculate_z_diameter(r, y, param.pocket.r);
-                let cos_theta = (param.neck.h - param.neck.dh - z) / dz;
-                let theta = cos_theta.acos();
-                let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);
-                // let dtheta = (2.0 * theta) / (n as f32 - 1.0);
+                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(param, param.r1, n);
                 (0..n).for_each(|i| points.push(linspace_ellipse(i, x, z, r, dx, dz, -theta, -dtheta)));
             },
             "ellipse_in_left" | "ellipse_in_right" => {
@@ -399,7 +374,9 @@ impl Brg {
         let flip_list = vec![
             "curve_in_top_right", 
             "curve_out_top_right", 
-            ];        
+            "slope_in_top_left",
+            "curve_top_in_right",
+            ];
         if flip_list.contains(&name) {
             points.reverse();
         }
@@ -411,20 +388,16 @@ impl Brg {
         for name in self.edges.keys() {
             let index = self.edges.get(name).unwrap();
             let points: Vec<Vector3<f32>> = self.linspace(name);
+
+            #[cfg(debug_assertions)] {
+                let old_points: Vec<Vector3<f32>> = index.iter().map(|i| old_points_all[*i as usize].as_f32()).collect();
+                println!("{}: new: {:?} {:?}", name, points.first().unwrap().data, points.last().unwrap().data);
+                println!("{}: old: {:?} {:?}", name, old_points.first().unwrap().data, old_points.last().unwrap().data);
+            }
             for i in 0..index.len() {
                 self.mesh.points[index[i] as usize] = Point::new(points[i]);
             }
-            // For Debug
-            let old_points: Vec<Vector3<f32>> = index.iter().map(|i| old_points_all[*i as usize].as_f32()).collect();
-
-            println!("{}: new: {:?} {:?}", name, points.first().unwrap().data, points.last().unwrap().data);
-            println!("{}: old: {:?} {:?}", name, old_points.first().unwrap().data, old_points.last().unwrap().data);
-            let old_point_first = old_points.first().unwrap().data;
-            let point_first = points.first().unwrap().data;
-            let point_last = points.last().unwrap().data;
-            let hoge = 1;
         }
-        println!("***********************************************");
     }
     pub fn smooth_face(&self, name: &str, iteration: i64) -> Vec<Point> {
 

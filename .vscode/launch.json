@@ -60,43 +60,5 @@
             "args": [],
             "cwd": "${workspaceFolder}"
         },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug integration test 'hello_world'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--test=hello_world",
-                    "--package=mophing"
-                ],
-                "filter": {
-                    "name": "hello_world",
-                    "kind": "test"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug integration test 'reader_test'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--test=reader_test",
-                    "--package=mophing"
-                ],
-                "filter": {
-                    "name": "reader_test",
-                    "kind": "test"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
     ]
 }

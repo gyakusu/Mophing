@@ -10,7 +10,6 @@ use super::vtk::Face;
 use super::vtk::Point;
 use super::vtk::Tetra;
 use super::vtk::Mesh;
-use super::brg::Brg;
 
 pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_section: &mut bool) {
     match e {
@@ -408,7 +407,8 @@ mod tests {
         let edges = read_index_from_xml(file_path, section0).unwrap();
         let faces = read_index_from_xml(file_path, section1).unwrap();
         // 目視で確認してください．
-        assert!(true);
+        assert!(edges.len() > 0);
+        assert!(faces.len() > 0);
     }
     #[test]
     fn test_write_and_read_setting() {
