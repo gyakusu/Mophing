@@ -3,17 +3,19 @@ use mophing::vtk::brg::Brg;
 
 fn main() {
 
-    // let origin_path = "data/Tetra.vtu";
-    // let index_path = "data/face_and_edge_index.xml";
-    // let write_path = "data/Tetra_linspace.vtu";
+    let origin_path = "data/Tetra.vtu";
+    let index_path = "data/face_and_edge_index.xml";
+    let write_path = "data/Tetra_linspace.vtu";
     // let setting_path = "data/Tetra_setting.xml";
-
-    let origin_path = "data/Tetra_Cage.vtu";
-    let index_path = "data/face_and_edge_index_cage.xml";
-    let write_path = "data/Tetra_linspace_cage.vtu";
-
     // let mesh = io::read_vtk_and_setting(origin_path, setting_path);
+
+    // let origin_path = "data/Tetra_Cage.vtu";
+    // let index_path = "data/face_and_edge_index_cage.xml";
+    // let write_path = "data/Tetra_linspace_cage.vtu";
+    // let setting_path = "data/Tetra_setting_cage.xml";
+
     let mesh = io::read_vtk(origin_path);
+
     let mut brg = Brg::sample(&mesh);
 
     let section0 = "edge";
@@ -25,9 +27,15 @@ fn main() {
 
     brg.linspace_all();
 
-    let hoge = brg.get_points();
+    brg.project_all();
 
-    io::copy_vtk_and_replace_point(origin_path, write_path, &hoge);
+    brg.smooth_face_all(20);
+    brg.smooth_inner(10);
+    brg.smooth_face_all(100);
+    brg.smooth_inner(50);
+
+    io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());
+
 }
 
 

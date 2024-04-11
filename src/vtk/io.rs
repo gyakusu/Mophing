@@ -45,7 +45,7 @@ pub fn parse_point(chars: String, points: &mut Vec<Point>) {
 }
 
 pub fn parse_tetra(chars: String, tetras: &mut Vec<Tetra>) {
-    let nums: Vec<i64> = chars.split_whitespace()
+    let nums: Vec<usize> = chars.split_whitespace()
         .filter_map(|s| s.parse().ok())
         .collect();
     for chunk in nums.chunks(4) {
@@ -107,7 +107,7 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     Mesh::load(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map)
 }
 
-pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<i64>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, outer_map: HashMap<i64, Vec<i64>>) -> std::io::Result<()> {
+pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<usize>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, outer_map: HashMap<usize, Vec<usize>>) -> std::io::Result<()> {
     let file = File::create(setting_path)?;
     let mut writer = writer::EmitterConfig::new()
         .perform_indent(true)
@@ -179,7 +179,7 @@ pub fn read_face(setting_path: &str) -> std::io::Result<Vec<Face>> {
                 current_face.clear();
             }
             Ok(XmlEvent::Characters(s)) => {
-                let numbers: Vec<i64> = s.split_whitespace().map(|s| s.parse().unwrap()).collect();
+                let numbers: Vec<usize> = s.split_whitespace().map(|s| s.parse().unwrap()).collect();
                 current_face.extend(numbers);
             }
             Ok(XmlEvent::EndElement { name }) if name.local_name == "face" => {
@@ -199,7 +199,7 @@ pub fn read_face(setting_path: &str) -> std::io::Result<Vec<Face>> {
     Ok(faces)
 }
 
-pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<i64>> {
+pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<usize>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -213,7 +213,7 @@ pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<i64>>
                 is_target_section = name.local_name == target;
             }
             Ok(XmlEvent::Characters(s)) if is_target_section => {
-                let numbers: Vec<i64> = s.split_whitespace()
+                let numbers: Vec<usize> = s.split_whitespace()
                                          .filter_map(|s| s.parse().ok())
                                          .collect();
                 index.extend(numbers);
@@ -231,7 +231,7 @@ pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<i64>>
     Ok(index)
 }
 
-pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<i64, Vec<i64>>> {
+pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, Vec<usize>>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -246,7 +246,7 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<i64
             }
             Ok(XmlEvent::Characters(s)) if is_target_section => {
                 for line in s.lines() {
-                    let numbers: Vec<i64> = line.split_whitespace()
+                    let numbers: Vec<usize> = line.split_whitespace()
                                                 .filter_map(|s| s.parse().ok())
                                                 .collect();
                     if let Some(key) = numbers.get(0) {
@@ -267,7 +267,7 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<i64
     }
     Ok(neighbor_map)
 }
-pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, Vec<i64>>> {
+pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, Vec<usize>>> {
 
     let file = File::open(file_path)?;
     let file = BufReader::new(file);
@@ -293,7 +293,7 @@ pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<Ha
             }
             Ok(XmlEvent::Characters(s)) => {
                 if in_edge_section {
-                    let numbers: Vec<i64> = s.split_whitespace()
+                    let numbers: Vec<usize> = s.split_whitespace()
                                             .filter_map(|s| s.parse().ok())
                                             .collect();
                     edges.insert(current_edge.clone(), numbers);

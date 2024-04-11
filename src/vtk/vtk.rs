@@ -21,12 +21,33 @@ impl Point {
     }
     pub fn project_on_circle(center: Vector3<f32>, direction: Vector3<f32>, radius: f32) -> Self {
         #[cfg(debug_assertions)] {
-            if (direction.norm() - 1.0).abs() > 1e-9 {
+            if (direction.norm() - 1.0).abs() > 1e-6 {
                 panic!("direction must be normalized");
             }
         }
         Self {
             x: center + direction * radius
+        }
+    }
+    pub fn project_on_cylinder(&self, center: Vector3<f32>, axis: Vector3<f32>, radius: f32, ) -> Self {
+        let (new_center, direction) = self.orthogonal(center, axis);
+        Self::project_on_circle(new_center, direction, radius)
+    }
+    pub fn project_on_sphire(&self, center: Vector3<f32>, radius: f32) -> Self {
+        let direction: Vector3<f32> = self.direction(center);
+        Self::project_on_circle(center, direction, radius)
+    }
+    pub fn project_on_plane(&self, center: Vector3<f32>, normal: Vector3<f32>) -> Self {
+        #[cfg(debug_assertions)] {
+            if (normal.norm() - 1.0).abs() > 1e-6 {
+                panic!("normal must be normalized");
+            }
+        }
+        let dx: Vector3<f32> = self.x - center;
+        let dot = dx.dot(&normal);
+        let new_point: Vector3<f32> = self.x - normal * dot;
+        Self {
+            x: new_point,
         }
     }
     pub fn as_f32(&self) -> Vector3<f32> {
@@ -50,7 +71,7 @@ impl Point {
     }
     pub fn orthogonal(&self, center: Vector3<f32>, axis: Vector3<f32>) -> (Vector3<f32>, Vector3<f32>) {
         #[cfg(debug_assertions)] {
-            if (axis.norm() - 1.0).abs() > 1.0e-9 {
+            if (axis.norm() - 1.0).abs() > 1.0e-6 {
                 panic!("axis must be normalized");
             }
         }
@@ -89,11 +110,11 @@ impl Point {
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub struct Face {
-    pub index: [i64; 3],
+    pub index: [usize; 3],
 }
 
 impl Face {
-    pub fn new(index: [i64; 3]) -> Result<Self, &'static str> {
+    pub fn new(index: [usize; 3]) -> Result<Self, &'static str> {
         if index.len() != 3 {
             return Err("index must have a length of 3");
         }        
@@ -103,17 +124,17 @@ impl Face {
             index: sorted_index,
         })
     }
-    pub fn as_i64(&self) -> [i64; 3] {
+    pub fn as_i64(&self) -> [usize; 3] {
         self.index
     }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Tetra {
-    pub index: [i64; 4],
+    pub index: [usize; 4],
 }
 impl Tetra {
-    pub fn new(index: [i64; 4]) -> Result<Self, &'static str> {
+    pub fn new(index: [usize; 4]) -> Result<Self, &'static str> {
         if index.len() != 4 {
             return Err("index must have a length of 4");
         }        
@@ -130,29 +151,29 @@ pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
     pub faces: Vec<Face>,
-    pub outer_index: Vec<i64>,
-    pub inner_index: Vec<i64>,
-    pub neighbor_map: HashMap<i64, Vec<i64>>,
-    pub outer_map: HashMap<i64, Vec<i64>>,
+    pub outer_index: Vec<usize>,
+    pub inner_index: Vec<usize>,
+    pub neighbor_map: HashMap<usize, Vec<usize>>,
+    pub outer_map: HashMap<usize, Vec<usize>>,
 }
 
 impl Mesh {
     pub fn new(points: Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
         let faces: Vec<Face> = tetras_to_faces(&tetras);
-        let outer_index: Vec<i64> = find_outer_index(faces.clone());
-        let inner_index: Vec<i64> = find_inner_index(faces.clone(), outer_index.clone());
-        let neighbor_map: HashMap<i64, Vec<i64>> = find_neighbors(&tetras);
-        let outer_map: HashMap<i64, Vec<i64>> = find_outer_neighbors(&neighbor_map, &inner_index);
+        let outer_index: Vec<usize> = find_outer_index(faces.clone());
+        let inner_index: Vec<usize> = find_inner_index(faces.clone(), outer_index.clone());
+        let neighbor_map: HashMap<usize, Vec<usize>> = find_neighbors(&tetras);
+        let outer_map: HashMap<usize, Vec<usize>> = find_outer_neighbors(&neighbor_map, &inner_index);
 
         Self::load(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map)
     }
 
-    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, Vec<Face>, Vec<i64>, Vec<i64>, HashMap<i64, Vec<i64>>, HashMap<i64, Vec<i64>>) {
+    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, Vec<Face>, Vec<usize>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
         (self.points.clone(), self.tetras.clone(), self.faces.clone(), self.outer_index.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.outer_map.clone())
     }
 
-    pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, outer_index: Vec<i64>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, outer_map: HashMap<i64, Vec<i64>>) -> Self {
+    pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, outer_index: Vec<usize>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, outer_map: HashMap<usize, Vec<usize>>) -> Self {
         Self {
             points,
             tetras,
@@ -163,7 +184,7 @@ impl Mesh {
             outer_map,
         }
     }
-    pub fn smooth_inner(&mut self, iteration: i64) {
+    pub fn smooth_inner(&mut self, iteration: usize) {
         let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone(), iteration);
         self.points = new_points;
     }
@@ -184,44 +205,43 @@ pub fn tetras_to_faces(tetras: &Vec<Tetra>) -> Vec<Face> {
     }
     faces
 }
-pub fn find_outer_index(faces: Vec<Face>) -> Vec<i64> {
+pub fn find_outer_index(faces: Vec<Face>) -> Vec<usize> {
 
-    let mut face_counts: HashMap<Face, i64> = HashMap::new();
+    let mut face_counts: HashMap<Face, usize> = HashMap::new();
     for face in &faces {
         *face_counts.entry(face.clone()).or_insert(0) += 1;
     }
     let shared_faces: HashSet<Face> = face_counts.iter()
-        .filter(|&(_face, &count)| count == 2)
+        .filter(|&(_face, &count)| count > 1)
+        // .filter(|&(_face, &count)| count == 2)
         .map(|(face, _count)| face.clone())
         .collect();
     let not_shared_faces: Vec<Face> = faces.iter()
         .filter(|face| !shared_faces.contains(face))
         .cloned()
         .collect();
-    let outer_map: HashSet<i64> = not_shared_faces.iter()
+    let outer_map: HashSet<usize> = not_shared_faces.iter()
         .flat_map(|face| face.index.iter())
         .cloned()
         .collect();
-    let mut outer_index: Vec<i64> = outer_map.iter().cloned().collect();
+    let mut outer_index: Vec<usize> = outer_map.iter().cloned().collect();
     outer_index.sort();
     outer_index
 }
+pub fn find_inner_index(faces: Vec<Face>, outer_index: Vec<usize>) -> Vec<usize> {
 
-pub fn find_inner_index(faces: Vec<Face>, outer_index: Vec<i64>) -> Vec<i64> {
-
-    let all_index: HashSet<i64> = faces.iter()
+    let all_index: HashSet<usize> = faces.iter()
         .flat_map(|face| face.index.iter())
         .cloned()
         .collect();
-    let mut inner_index: Vec<i64> = all_index.difference(&outer_index.iter().cloned().collect())
+    let mut inner_index: Vec<usize> = all_index.difference(&outer_index.iter().cloned().collect())
         .cloned()
         .collect();
     inner_index.sort();
     inner_index
 }
-
-pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<i64, Vec<i64>> {
-    let mut neighbor_map: HashMap<i64, Vec<i64>> = HashMap::new();
+pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<usize, Vec<usize>> {
+    let mut neighbor_map: HashMap<usize, Vec<usize>> = HashMap::new();
     for tetra in tetras {
         for i in 0..4 {
             for j in 0..4 {
@@ -237,66 +257,78 @@ pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<i64, Vec<i64>> {
     }
     neighbor_map
 }
-
-pub fn find_outer_neighbors(neighbor_map: &HashMap<i64, Vec<i64>>, inner_index: &[i64]) -> HashMap<i64, Vec<i64>> {
-    let mut outer_map: HashMap<i64, Vec<i64>> = HashMap::new();
+pub fn find_outer_neighbors(neighbor_map: &HashMap<usize, Vec<usize>>, inner_index: &[usize]) -> HashMap<usize, Vec<usize>> {
+    let mut outer_map: HashMap<usize, Vec<usize>> = HashMap::new();
     for (key, value) in neighbor_map {
-        let filtered_value: Vec<i64> = value.iter().filter(|&index| !inner_index.contains(index)).cloned().collect();
+        let filtered_value: Vec<usize> = value.iter().filter(|&index| !inner_index.contains(index)).cloned().collect();
         outer_map.insert(*key, filtered_value);
     }
     outer_map
 }
 
-pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<i64>, neighbor_map: HashMap<i64, Vec<i64>>, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, iteration: usize) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
-            new_points[i as usize] = sum.mul(1.0 / neighbors.len() as f32);
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
         }
     }
     new_points
 }
-
-pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, radius: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, radius: f32, iteration: usize) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
-            let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
-            let direction: Vector3<f32> = sum.direction(center);
-            new_points[i as usize] = Point::project_on_circle(center, direction, radius);
+            let neighbors = &neighbor_map[&i];
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let mean = sum.mul(1.0 / neighbors.len() as f32);
+            let direction: Vector3<f32> = mean.direction(center);
+            new_points[i] = Point::project_on_circle(center, direction, radius);
         }
     }
     new_points
 }
-pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32, iteration: usize) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
-            let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let neighbors = &neighbor_map[&i];
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             let (new_center, direction) = mean.orthogonal(center, axis);
-            new_points[i as usize] = Point::project_on_circle(new_center, direction, radius);
+            new_points[i] = Point::project_on_circle(new_center, direction, radius);
         }
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<i64>, outer_map: HashMap<i64, Vec<i64>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32, iteration: i64) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32, iteration: usize) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
     for _ in 0..iteration {
         for &i in &inner_index {
-            let neighbors = &outer_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j as usize].as_f32()));
+            let neighbors = &neighbor_map[&i];
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
-            new_points[i as usize] = mean.orthogonal_cone(center, axis, ratio);
+            new_points[i] = mean.orthogonal_cone(center, axis, ratio);
+        }
+    }
+    new_points
+}
+pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, iteration: usize) -> Vec<Point> {
+    let mut new_points = points.clone();
+
+    for _ in 0..iteration {
+        for &i in &inner_index {
+            let neighbors = &neighbor_map[&i];
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let mean = sum.mul(1.0 / neighbors.len() as f32);
+            new_points[i] = mean.project_on_plane(center, normal);
         }
     }
     new_points
@@ -377,7 +409,7 @@ mod tests {
         ];
         let inner_index = vec![0, 1, 2, 3];
         let neighbor_map = {
-            let mut neighbor_map: HashMap<i64, Vec<i64>> = HashMap::new();
+            let mut neighbor_map: HashMap<usize, Vec<usize>> = HashMap::new();
             neighbor_map.insert(0, vec![1, 2, 3]);
             neighbor_map.insert(1, vec![0, 4, 5]);
             neighbor_map.insert(2, vec![0, 4, 6]);
@@ -429,6 +461,46 @@ mod tests {
         let new_point3 = point.orthogonal_cone(center3, axis, 1.0);
         assert_eq!(new_point3, Point { x: Vector3::new(11.0, 10.0, 9.0) });
     }
+    #[test]
+    fn test_point_project_on_cylinder() {
+        let point = Point { x: Vector3::new(-8.0, -6.0, 1.0) };
+        let center:Vector3<f32> = Vector3::zeros();
+        let axis:Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
+        let radius = 5.0;
+        let new_point = point.project_on_cylinder(center, axis, radius);
+        assert_eq!(new_point, Point { x: Vector3::new(-4.0, -3.0, 1.0) });
+    }
+    #[test]
+    fn test_point_project_on_sphire() {
+        let point = Point { x: Vector3::new(-8.0, -6.0, 0.0) };
+        let center:Vector3<f32> = Vector3::zeros();
+        let radius = 5.0;
+        let new_point = point.project_on_sphire(center, radius);
+        assert_eq!(new_point, Point { x: Vector3::new(-4.0, -3.0, 0.0) });
+    }
+    #[test]
+    fn test_laplacian_smoothing_with_axis_normalizing() {
+        let sqrt3  = 1.7320508075688772;
+
+        let points = vec![
+            Point { x: Vector3::new(0.0, 2.0, 0.0) }, // 0
+            Point { x: Vector3::new(0.0, 0.0, 1.0) }, // 1
+            Point { x: Vector3::new(0.0, 0.0, 2.0) }, // 2
+            Point { x: Vector3::new(2.0, 0.0, 0.0) }, // 3
+        ];
+        let inner_index = vec![1, 2, ];
+        let outer_map = {
+            let mut outer_map: HashMap<usize, Vec<usize>> = HashMap::new();
+            outer_map.insert(1, vec![0, 2]);
+            outer_map.insert(2, vec![1, 3]);
+            outer_map
+        };
+        let new_points = laplacian_smoothing_with_axis_normalizing(points, inner_index, outer_map, Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0, 50);
+
+        assert_ne!(new_points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_ne!(new_points[2], Point { x: Vector3::new(sqrt3, 1.0, 0.0) });
+    }
+
 }
 
 

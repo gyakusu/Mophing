@@ -5,12 +5,14 @@ use nalgebra as na;
 use na::Vector3;
 
 use std::collections::HashMap;
+use super::vtk::laplacian_smoothing_on_plane;
 use super::vtk::Mesh;
+use super::vtk::Face;
 use super::vtk::Point;
 use super::vtk::laplacian_smoothing;
 use super::vtk::laplacian_smoothing_with_axis_normalizing;
 use super::vtk::laplacian_smoothing_with_center_normalizing;
-use super::vtk::laplacian_smoothing_with_cone_normalizing;
+// use super::vtk::laplacian_smoothing_with_cone_normalizing;
 
 fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Vector3<f32> {
     let t: f32 = theta + dtheta * (i as f32);
@@ -82,6 +84,7 @@ pub struct CageParameter {
 
     pub pocket: PocketParameter,
     pub neck: NeckParameter,
+    // pub face_list: Vec<String>,
 }
 impl CageParameter {
     pub fn sample() -> Self {
@@ -115,8 +118,9 @@ pub struct Brg {
     mesh: Mesh,
     param: CageParameter,
 
-    edges: HashMap<String, Vec<i64>>,
-    faces: HashMap<String, Vec<i64>>,
+    edges: HashMap<String, Vec<usize>>,
+    faces: HashMap<String, Vec<usize>>,
+    periodics: (Vec<usize>, Vec<usize>),
 }
 impl Brg {
     pub fn new(mesh: &Mesh, param: &CageParameter) -> Self {        
@@ -125,19 +129,23 @@ impl Brg {
             param: param.clone(),
             edges: HashMap::new(),   // エッジのインデックス
             faces: HashMap::new(),   // エッジを除く面のインデックス
+            periodics: (Vec::new(), Vec::new()), // 周期境界のインデックス
         }
     }
     pub fn sample(mesh: &Mesh) -> Self {
         let param = CageParameter::sample();
         Brg::new(mesh, &param)
     }
-    pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<i64>>, faces: HashMap<String, Vec<i64>>) {
+    pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<usize>>, faces: HashMap<String, Vec<usize>>) {
         for (name, index) in edges {
             self.edges.insert(name, index);
         }
         for (name, index) in faces {
             self.faces.insert(name, index);
         }
+    }
+    pub fn set_periodic(&mut self, left: Vec<usize>, right: Vec<usize>) {
+        self.periodics = (left, right);
     }
     pub fn get_points(&self) -> Vec<Point> {
         self.mesh.points.clone()
@@ -186,6 +194,16 @@ impl Brg {
         let theta = cos_theta.acos();
         let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);        
         (x, z, r, dx, dz, theta, dtheta)
+    }
+    pub fn get_settings(&self) -> (Vec<Face>, Vec<usize>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
+
+        let faces = self.mesh.faces.clone();
+        let outer_index = self.mesh.outer_index.clone();
+        let inner_index = self.mesh.inner_index.clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
+        let outer_map = self.mesh.outer_map.clone();
+
+        (faces, outer_index, inner_index, neighbor_map, outer_map)
     }
     pub fn linspace(&self, name: &str) -> Vec<Vector3<f32>> {
     
@@ -375,13 +393,16 @@ impl Brg {
             "curve_in_top_right", 
             "curve_out_top_right", 
             "slope_in_top_left",
+            "slope_out_top_left",
             "curve_top_in_right",
+            "curve_top_out_right",
+            "slope_bottom_left_in",
+            "slope_bottom_right_in",
             ];
         if flip_list.contains(&name) {
             points.reverse();
         }
         points
-
     }
     pub fn linspace_all(&mut self) {
         let old_points_all = self.get_points();
@@ -391,33 +412,112 @@ impl Brg {
 
             #[cfg(debug_assertions)] {
                 let old_points: Vec<Vector3<f32>> = index.iter().map(|i| old_points_all[*i as usize].as_f32()).collect();
-                println!("{}: new: {:?} {:?}", name, points.first().unwrap().data, points.last().unwrap().data);
-                println!("{}: old: {:?} {:?}", name, old_points.first().unwrap().data, old_points.last().unwrap().data);
+                let distance_small = (points.first().unwrap() - old_points.first().unwrap()).norm();
+                let distance_large = (points.first().unwrap() - old_points.last().unwrap()).norm();
+                if distance_small > distance_large {
+                    panic!("must be flipped at {}", name)
+                }
             }
             for i in 0..index.len() {
                 self.mesh.points[index[i] as usize] = Point::new(points[i]);
             }
         }
     }
-    pub fn smooth_face(&self, name: &str, iteration: i64) -> Vec<Point> {
+    pub fn project_all(&mut self) {
+
+        let bottom: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h0);
+        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h1);
+        let top: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let axis: Vector3<f32>   = Vector3::new(0.0, 0.0, 1.0);
+
+        for i in self.faces.get("curvature_in").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.param.r0);
+        }
+        for i in self.faces.get("curvature_out").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.param.r1);
+        }
+        for i in self.faces.get("bottom").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_plane(bottom, axis);
+        }
+        for i in self.faces.get("top_left").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
+        }
+        for i in self.faces.get("top_right").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
+        }
+        for i in self.faces.get("shoulder_left").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
+        }
+        for i in self.faces.get("shoulder_right").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
+        }
+        for i in self.faces.get("sphire").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.pocket.x, self.param.pocket.r);
+        }
+        for i in self.faces.get("sphire_left").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.neck.x, self.param.neck.r);
+        }
+        for i in self.faces.get("sphire_right").unwrap_or(&Vec::new()).clone() {
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.neck.x, self.param.neck.r);
+        }
+    }
+    pub fn smooth_face(&self, name: &str, iteration: usize) -> Vec<Point> {
+
+        let bottom: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h0);
+        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h1);
+        let top: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let axis: Vector3<f32>   = Vector3::new(0.0, 0.0, 1.0);
 
         let points = self.mesh.points.clone();
         let inner_index = self.faces.get(name).unwrap().clone();
-        let outer_map = self.mesh.outer_map.clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
 
         match name {
             "curvature_in" => {
-                let center: Vector3<f32> = Vector3::zeros();
-                let axis: Vector3<f32> = Vector3::new(0.0, 0.0, 1.0);
-                let radius = self.param.r0;
-                laplacian_smoothing_with_axis_normalizing(points, inner_index, outer_map, center, axis, radius, iteration)
+                laplacian_smoothing_with_axis_normalizing(points, inner_index, neighbor_map, bottom, axis, self.param.r0, iteration)
+            },
+            "curvature_out" => {
+                laplacian_smoothing_with_axis_normalizing(points, inner_index, neighbor_map, bottom, axis, self.param.r1, iteration)
+            },
+            "bottom" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, bottom, axis, iteration)
+            },
+            "top_left" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, top, axis, iteration)
+            },
+            "top_right" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, top, axis, iteration)
+            },
+            "shoulder_left" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, shoulder, axis, iteration)
+            },
+            "shoulder_right" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, shoulder, axis, iteration)
+            },
+            "sphire" => {
+                laplacian_smoothing_with_center_normalizing(points, inner_index, neighbor_map, self.param.pocket.x, self.param.pocket.r, iteration)
+            },
+            "sphire_left" => {
+                laplacian_smoothing_with_center_normalizing(points, inner_index, neighbor_map, self.param.neck.x, self.param.neck.r, iteration)
+            },
+            "sphire_right" => {
+                laplacian_smoothing_with_center_normalizing(points, inner_index, neighbor_map, self.param.neck.x, self.param.neck.r, iteration)
             },
             _ => {
                 vec![]
             }
         }
     }
-    pub fn smooth_inner(&mut self, iteration: i64) {
+    pub fn smooth_face_all(&mut self, iteration: usize) {
+        for name in self.faces.keys() {
+            let points = self.smooth_face(name, iteration);
+            let index = self.faces.get(name).unwrap();
+            for i in index {
+                self.mesh.points[*i] = points[*i];
+            }
+        }
+    }
+    pub fn smooth_inner(&mut self, iteration: usize) {
         
         let points = self.mesh.points.clone();
         let inner_index = self.mesh.inner_index.clone();
@@ -426,7 +526,7 @@ impl Brg {
         let smoothed_points = laplacian_smoothing(points, inner_index.clone(), neighbor_map, iteration);
 
         for i in inner_index.clone() {
-            self.mesh.points[i as usize] = smoothed_points[i as usize];
+            self.mesh.points[i] = smoothed_points[i];
         }
     }
 
@@ -450,7 +550,7 @@ mod tests {
         let r1 = 5.0;
 
         let dz = calculate_z_diameter(r0, y, r1);
-        assert_eq!(dz, 3.0);
+        assert_eq!(dz, 4.0);
     }
 }
 
