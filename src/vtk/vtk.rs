@@ -9,7 +9,12 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn new(x: Vector3<f32>) -> Self {
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Self {
+            x: Vector3::new(x, y, z)
+        }
+    }
+    pub fn from_vec(x: Vector3<f32>) -> Self {
         Self {
             x,
         }
@@ -17,6 +22,11 @@ impl Point {
     pub fn zero() -> Self {
         Self {
             x: Vector3::zeros()
+        }
+    }
+    pub fn flip_x(&self) -> Self {
+        Self {
+            x: Vector3::new(-self.x[0], self.x[1], self.x[2])
         }
     }
     pub fn project_on_circle(center: Vector3<f32>, direction: Vector3<f32>, radius: f32) -> Self {
@@ -50,7 +60,7 @@ impl Point {
             x: new_point,
         }
     }
-    pub fn as_f32(&self) -> Vector3<f32> {
+    pub fn as_vec(&self) -> Vector3<f32> {
         self.x
     }
     pub fn add(&self, a: Vector3<f32>) -> Self {
@@ -272,7 +282,7 @@ pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
             new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
         }
     }
@@ -284,7 +294,7 @@ pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_ind
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             let direction: Vector3<f32> = mean.direction(center);
             new_points[i] = Point::project_on_circle(center, direction, radius);
@@ -298,7 +308,7 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             let (new_center, direction) = mean.orthogonal(center, axis);
             new_points[i] = Point::project_on_circle(new_center, direction, radius);
@@ -313,7 +323,7 @@ pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             new_points[i] = mean.orthogonal_cone(center, axis, ratio);
         }
@@ -326,7 +336,7 @@ pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>,
     for _ in 0..iteration {
         for &i in &inner_index {
             let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_f32()));
+            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
             let mean = sum.mul(1.0 / neighbors.len() as f32);
             new_points[i] = mean.project_on_plane(center, normal);
         }

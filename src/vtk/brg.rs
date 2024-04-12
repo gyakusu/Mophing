@@ -14,26 +14,26 @@ use super::vtk::laplacian_smoothing_with_axis_normalizing;
 use super::vtk::laplacian_smoothing_with_center_normalizing;
 // use super::vtk::laplacian_smoothing_with_cone_normalizing;
 
-fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Vector3<f32> {
+fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Point {
     let t: f32 = theta + dtheta * (i as f32);
-    Vector3::new(
+    Point::new(
         center[0] + radius * t.sin(),
         center[1] + radius * t.cos(),
         center[2]
     )
 }
-fn linspace_line(i: usize, x: Vector3<f32>, dx: Vector3<f32>) -> Vector3<f32> {
-        x + dx * (i as f32)
+fn linspace_line(i: usize, x: Vector3<f32>, dx: Vector3<f32>) -> Point {
+        Point::from_vec(x + dx * (i as f32))
 }
 // 円柱周りの（近似）楕円軌道を生成する関数．
-fn linspace_ellipse(i: usize, x: f32, z: f32, r: f32, dx: f32, dz: f32, theta: f32, dtheta: f32) -> Vector3<f32> {
+fn linspace_ellipse(i: usize, x: f32, z: f32, r: f32, dx: f32, dz: f32, theta: f32, dtheta: f32) -> Point {
     let t = theta + dtheta * (i as f32);
 
     let x0 = x + t.sin() * dx;
     let y0 = (r * r - x0 * x0).sqrt();
     let z0 = z + t.cos() * dz;
 
-    Vector3::new(x0, y0, z0)
+    Point::new(x0, y0, z0)
 }
 fn row_of_cosine(a: f32,b: f32,c: f32) -> f32 {
     (b*b + c*c - a*a) / (2.0 * b * c)
@@ -52,9 +52,6 @@ fn calculate_z_diameter(r0: f32, y: f32, r1: f32) -> f32 {
 }
 fn cutted_sphire_radius(r: f32, h: f32) -> f32 {
     (r*r - h*h).sqrt()
-}
-fn flip_x(x: Vector3<f32>) -> Vector3<f32>{
-    Vector3::new(-x[0], x[1], x[2])
 }
 // メッシュ構造体パラメタ
 #[derive(Clone, Debug)]
@@ -205,7 +202,7 @@ impl Brg {
 
         (faces, outer_index, inner_index, neighbor_map, outer_map)
     }
-    pub fn linspace(&self, name: &str) -> Vec<Vector3<f32>> {
+    pub fn linspace(&self, name: &str) -> Vec<Point> {
     
         let param = &self.param;
         let n = self.edges.get(name).unwrap().len();
@@ -215,7 +212,7 @@ impl Brg {
         let r_top    = cutted_sphire_radius(param.neck.r, param.neck.h - param.neck.x[2]); // 頂部における爪外径の半径
         let r_apt    = r_middle + param.neck.dh * param.neck.r_ratio; // 頂部における爪内径の半径
 
-        let mut points: Vec<Vector3<f32>> = Vec::with_capacity(n);
+        let mut points: Vec<Point> = Vec::with_capacity(n);
 
         match name {
             "curve_bottom_in" => {
@@ -288,8 +285,8 @@ impl Brg {
                 let sin = param.theta0.sin();
                 let cos = param.theta0.cos();
                 let (r0, r1) = (param.r0, param.r0 + param.bevel);
-                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0 + param.bevel);
-                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0);
+                let x0: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0);
+                let x1: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0 + param.bevel);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             }
@@ -356,7 +353,7 @@ impl Brg {
                     let h = z0 + dz * (i as f32);
                     let r = cutted_sphire_radius(self.param.neck.r, h - param.neck.x[2]);
                     let (x, y) = calculate_x_diameter(self.param.r0, self.param.neck.x[1], r);
-                    points.push(Vector3::new(-x, y, h));
+                    points.push(Point::new(-x, y, h));
                 }
             },
             "ellipse_out_left" | "ellipse_out_right" => {
@@ -367,7 +364,7 @@ impl Brg {
                     let h = z0 + dz * (i as f32);
                     let r = cutted_sphire_radius(self.param.neck.r, h - param.neck.x[2]);
                     let (x, y) = calculate_x_diameter(self.param.r1, self.param.neck.x[1], r);
-                    points.push(Vector3::new(-x, y, h));
+                    points.push(Point::new(-x, y, h));
                 }
             },
             "stripe_in_left" | "stripe_in_right" => {
@@ -375,20 +372,18 @@ impl Brg {
                 let z0 = param.neck.h - param.neck.dh;
                 let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
-                (0..n).for_each(|i| points.push(Vector3::new(-x, y, z0 + dz * (i as f32))));
+                (0..n).for_each(|i| points.push(Point::new(-x, y, z0 + dz * (i as f32))));
             },
             "stripe_out_left" | "stripe_out_right" => {
                 let (x, y) = calculate_x_diameter(param.r1, param.pocket.x[1], r_middle);
                 let z0 = param.neck.h - param.neck.dh;
                 let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
-                (0..n).for_each(|i| points.push(Vector3::new(-x, y, z0 + dz * (i as f32))));
+                (0..n).for_each(|i| points.push(Point::new(-x, y, z0 + dz * (i as f32))));
             },
             _ => {
             }
         }
-        if name.contains("right") { points.iter_mut().for_each(|p: &mut Vector3<f32> | *p = flip_x(*p)); }
-
         let flip_list = vec![
             "curve_in_top_right", 
             "curve_out_top_right", 
@@ -396,11 +391,12 @@ impl Brg {
             "slope_out_top_left",
             "curve_top_in_right",
             "curve_top_out_right",
-            "slope_bottom_left_in",
-            "slope_bottom_right_in",
             ];
         if flip_list.contains(&name) {
             points.reverse();
+        }
+        if name.contains("right") {
+            return points.iter().map(|p| p.flip_x()).collect();
         }
         points
     }
@@ -408,27 +404,28 @@ impl Brg {
         let old_points_all = self.get_points();
         for name in self.edges.keys() {
             let index = self.edges.get(name).unwrap();
-            let points: Vec<Vector3<f32>> = self.linspace(name);
+            let points: Vec<Point> = self.linspace(name);
 
             #[cfg(debug_assertions)] {
-                let old_points: Vec<Vector3<f32>> = index.iter().map(|i| old_points_all[*i as usize].as_f32()).collect();
-                let distance_small = (points.first().unwrap() - old_points.first().unwrap()).norm();
-                let distance_large = (points.first().unwrap() - old_points.last().unwrap()).norm();
+                let old_points: Vec<Point> = index.iter().map(|i| old_points_all[*i as usize]).collect();
+                let distance_small = (points.first().unwrap().as_vec() - old_points.first().unwrap().as_vec()).norm();
+                let distance_large = (points.first().unwrap().as_vec() - old_points.last().unwrap().as_vec()).norm();
                 if distance_small > distance_large {
                     panic!("must be flipped at {}", name)
                 }
+                // println!("{}", distance_small); // 目視で確認．点の移動が大きい場合はflip_xを使う．
             }
             for i in 0..index.len() {
-                self.mesh.points[index[i] as usize] = Point::new(points[i]);
+                self.mesh.points[index[i] as usize] = points[i];
             }
         }
     }
     pub fn project_all(&mut self) {
 
-        let bottom: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h0);
+        let bottom: Vector3<f32>   = Vector3::new(0.0, 0.0, self.param.h0);
         let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h1);
-        let top: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.neck.h);
-        let axis: Vector3<f32>   = Vector3::new(0.0, 0.0, 1.0);
+        let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let axis: Vector3<f32>     = Vector3::new(0.0, 0.0, 1.0);
 
         for i in self.faces.get("curvature_in").unwrap_or(&Vec::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.param.r0);
@@ -463,10 +460,12 @@ impl Brg {
     }
     pub fn smooth_face(&self, name: &str, iteration: usize) -> Vec<Point> {
 
-        let bottom: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h0);
-        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h1);
-        let top: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.neck.h);
-        let axis: Vector3<f32>   = Vector3::new(0.0, 0.0, 1.0);
+        let bottom: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.h0);
+        let shoulder: Vector3<f32>  = Vector3::new(0.0, 0.0, self.param.h1);
+        let top: Vector3<f32>       = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let axis: Vector3<f32>      = Vector3::new(0.0, 0.0, 1.0);
+        let axis_left: Vector3<f32> = Vector3::new(self.param.theta0.cos(), self.param.theta0.sin(), 0.0);
+        let axis_right: Vector3<f32> = Vector3::new(self.param.theta1.cos(), self.param.theta1.sin(), 0.0);
 
         let points = self.mesh.points.clone();
         let inner_index = self.faces.get(name).unwrap().clone();
@@ -503,6 +502,12 @@ impl Brg {
             "sphire_right" => {
                 laplacian_smoothing_with_center_normalizing(points, inner_index, neighbor_map, self.param.neck.x, self.param.neck.r, iteration)
             },
+            "periodic_left" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, bottom, axis_left, iteration)
+            },
+            "periodic_right" => {
+                laplacian_smoothing_on_plane(points, inner_index, neighbor_map, bottom, axis_right, iteration)
+            },
             _ => {
                 vec![]
             }
@@ -529,12 +534,13 @@ impl Brg {
             self.mesh.points[i] = smoothed_points[i];
         }
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::io;
+
     #[test]
     fn test_calculate_minor_diameter() {
         let r0 = 4.0;
@@ -552,5 +558,41 @@ mod tests {
         let dz = calculate_z_diameter(r0, y, r1);
         assert_eq!(dz, 4.0);
     }
+    #[test]
+    // 少し小さいサイズのモデルで代数的に与えるエッジが矛盾なく繋がるかのテスト
+    fn test_linspace_all() {
+        let mesh = io::read_vtk("data/Tetra.vtu");
+        let ratio = 0.99;
+        let param = CageParameter {
+            axis: Vector3::new(0.0, 0.0, 1.0),
+            theta0: -PI / 6.0,
+            theta1:  PI / 6.0,
+            r0: 2.345e-3 * ratio,
+            r1: 2.850e-3 * ratio,
+            h0: 0.93e-3 * ratio,
+            h1: 2.10e-3 * ratio,
+            bevel: 0.10e-3 * ratio,
+            pocket: PocketParameter {
+                x: Vector3::new(0.0, 2.65e-3, 2.00e-3) * ratio,
+                r: 0.825e-3 * ratio,
+            },
+            neck: NeckParameter {
+                x: Vector3::new(0.0, 2.65e-3, 2.00e-3 - 0.30e-3) * ratio,
+                r: 1.20e-3 * ratio,
+                h: 2.45e-3 * ratio,
+                dh: 0.1519e-3 * ratio,
+                h_ratio: 0.355 * ratio,
+                r_ratio: 0.55 * ratio,
+            },
+        };
+        let mut brg = Brg::new(&mesh, &param);
+        let edges = io::read_index_from_xml("data/face_and_edge_index.xml", "edge").unwrap();
+        let faces = io::read_index_from_xml("data/face_and_edge_index.xml", "face").unwrap();    
+        brg.set_edge_and_face(edges, faces);
+
+        brg.linspace_all(); // ２つ以上の重複定義で，それらが乖離していたらpanicする．
+        assert!(true); // panicしなければOK
+    }
+    
 }
 
