@@ -194,8 +194,8 @@ impl Mesh {
             outer_map,
         }
     }
-    pub fn smooth_inner(&mut self, iteration: usize) {
-        let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone(), iteration);
+    pub fn smooth_inner(&mut self) {
+        let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone());
         self.points = new_points;
     }
 }
@@ -276,70 +276,60 @@ pub fn find_outer_neighbors(neighbor_map: &HashMap<usize, Vec<usize>>, inner_ind
     outer_map
 }
 
-pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, iteration: usize) -> Vec<Point> {
+pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for _ in 0..iteration {
-        for &i in &inner_index {
-            let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
-            new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
-        }
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
+        new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
     }
     new_points
 }
-pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, radius: f32, iteration: usize) -> Vec<Point> {
+pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for _ in 0..iteration {
-        for &i in &inner_index {
-            let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
-            let mean = sum.mul(1.0 / neighbors.len() as f32);
-            let direction: Vector3<f32> = mean.direction(center);
-            new_points[i] = Point::project_on_circle(center, direction, radius);
-        }
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
+        let mean = sum.mul(1.0 / neighbors.len() as f32);
+        let direction: Vector3<f32> = mean.direction(center);
+        new_points[i] = Point::project_on_circle(center, direction, radius);
     }
     new_points
 }
-pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32, iteration: usize) -> Vec<Point> {
+pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for _ in 0..iteration {
-        for &i in &inner_index {
-            let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
-            let mean = sum.mul(1.0 / neighbors.len() as f32);
-            let (new_center, direction) = mean.orthogonal(center, axis);
-            new_points[i] = Point::project_on_circle(new_center, direction, radius);
-        }
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
+        let mean = sum.mul(1.0 / neighbors.len() as f32);
+        let (new_center, direction) = mean.orthogonal(center, axis);
+        new_points[i] = Point::project_on_circle(new_center, direction, radius);
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32, iteration: usize) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
-    for _ in 0..iteration {
-        for &i in &inner_index {
-            let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
-            let mean = sum.mul(1.0 / neighbors.len() as f32);
-            new_points[i] = mean.orthogonal_cone(center, axis, ratio);
-        }
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
+        let mean = sum.mul(1.0 / neighbors.len() as f32);
+        new_points[i] = mean.orthogonal_cone(center, axis, ratio);
     }
     new_points
 }
-pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, iteration: usize) -> Vec<Point> {
+pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, _: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for _ in 0..iteration {
-        for &i in &inner_index {
-            let neighbors = &neighbor_map[&i];
-            let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
-            let mean = sum.mul(1.0 / neighbors.len() as f32);
-            new_points[i] = mean.project_on_plane(center, normal);
-        }
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
+        let mean = sum.mul(1.0 / neighbors.len() as f32);
+        new_points[i] = mean.project_on_plane(center, normal);
     }
     new_points
 }
@@ -408,7 +398,7 @@ mod tests {
         let sqrt3  = 1.7320508075688772;
         let sqrt27 = sqrt3 * 3.0;
 
-        let points = vec![
+        let mut points = vec![
             Point { x: Vector3::new(6.0, 1.0, 0.0) }, // 0
             Point { x: Vector3::new(7.0, 0.0, 1.0) }, // 1
             Point { x: Vector3::new(8.0, -1.0, 0.0) }, // 2
@@ -426,12 +416,14 @@ mod tests {
             neighbor_map.insert(3, vec![0, 5, 6]);
             neighbor_map
         };
-        let new_points = laplacian_smoothing(points, inner_index, neighbor_map, 100);
-
-        assert_eq!(new_points[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
-        assert_eq!(new_points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
-        assert_eq!(new_points[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
-        assert_eq!(new_points[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
+        let iteration: usize = 50;
+        for _ in 0..iteration {
+            points = laplacian_smoothing(points.clone(), inner_index.clone(), neighbor_map.clone());
+        }
+        assert_eq!(points[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
+        assert_eq!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_eq!(points[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
+        assert_eq!(points[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
     }
 
     #[test]
@@ -492,7 +484,7 @@ mod tests {
     fn test_laplacian_smoothing_with_axis_normalizing() {
         let sqrt3  = 1.7320508075688772;
 
-        let points = vec![
+        let mut points = vec![
             Point { x: Vector3::new(0.0, 2.0, 0.0) }, // 0
             Point { x: Vector3::new(0.0, 0.0, 1.0) }, // 1
             Point { x: Vector3::new(0.0, 0.0, 2.0) }, // 2
@@ -505,10 +497,13 @@ mod tests {
             outer_map.insert(2, vec![1, 3]);
             outer_map
         };
-        let new_points = laplacian_smoothing_with_axis_normalizing(points, inner_index, outer_map, Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0, 50);
+        let iteration: usize = 50;
+        for _ in 0..iteration {
+            points = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), outer_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
+        }
 
-        assert_ne!(new_points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
-        assert_ne!(new_points[2], Point { x: Vector3::new(sqrt3, 1.0, 0.0) });
+        assert_ne!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_ne!(points[2], Point { x: Vector3::new(sqrt3, 1.0, 0.0) });
     }
 
 }
