@@ -196,15 +196,14 @@ impl Brg {
         let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);        
         (x, z, r, dx, dz, theta, dtheta)
     }
-    pub fn get_settings(&self) -> (Vec<Face>, Vec<usize>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
+    pub fn get_settings(&self) -> (Vec<Face>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
 
         let faces = self.mesh.faces.clone();
-        let outer_index = self.mesh.outer_index.clone();
         let inner_index = self.mesh.inner_index.clone();
         let neighbor_map = self.mesh.neighbor_map.clone();
-        let outer_map = self.mesh.outer_map.clone();
+        let surface_map = self.mesh.surface_map.clone();
 
-        (faces, outer_index, inner_index, neighbor_map, outer_map)
+        (faces, inner_index, neighbor_map, surface_map)
     }
     pub fn linspace(&self, name: &str) -> Vec<Point> {
     
@@ -405,12 +404,12 @@ impl Brg {
         points
     }
     pub fn linspace_all(&mut self) {
-        let old_points_all = self.get_points();
         for name in self.edges.keys() {
             let index = self.edges.get(name).unwrap();
             let points: Vec<Point> = self.linspace(name);
 
             #[cfg(debug_assertions)] {
+                let old_points_all = self.get_points();
                 let old_points: Vec<Point> = index.iter().map(|i| old_points_all[*i as usize]).collect();
                 let distance_small = (points.first().unwrap().as_vec() - old_points.first().unwrap().as_vec()).norm();
                 let distance_large = (points.first().unwrap().as_vec() - old_points.last().unwrap().as_vec()).norm();
@@ -473,7 +472,7 @@ impl Brg {
         let axis_right: Vector3<f32> = Vector3::new(self.param.theta1.cos(), self.param.theta1.sin(), 0.0);
 
         let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&Vec::new()).clone();
-        let neighbor_map = self.mesh.neighbor_map.clone();
+        let surface_map = self.mesh.surface_map.clone();
 
         let operations: [(&str, fn(Vec<Point>, Vec<usize>, HashMap<usize, Vec<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
         [
@@ -515,7 +514,7 @@ impl Brg {
         ];
         for (name, function, arg1, arg2, arg3) in operations.iter() {
             let inner_index = get_inner_index(name);
-            let smoothed_point = function(points.clone(), inner_index.clone(), neighbor_map.clone(), *arg1, *arg2, *arg3);
+            let smoothed_point = function(points.clone(), inner_index.clone(), surface_map.clone(), *arg1, *arg2, *arg3);
             inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
         }
     }
@@ -584,52 +583,3 @@ mod tests {
 }
 
 
-
-
-        // let inner_index = get_inner_index("curvature_in");
-        // let smoothed_point = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), neighbor_map.clone(), bottom, axis, self.param.r0);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("curvature_out");
-        // let smoothed_point = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), neighbor_map.clone(), bottom, axis, self.param.r1);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("bottom");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), bottom, axis, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("top_left");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), top, axis, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("top_right");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), top, axis, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("shoulder_left");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), shoulder, axis, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("shoulder_right");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), shoulder, axis, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("sphire");
-        // let smoothed_point = laplacian_smoothing_with_center_normalizing(points.clone(), inner_index.clone(), neighbor_map.clone(), self.param.pocket.x, axis, self.param.pocket.r);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("sphire_left");
-        // let smoothed_point = laplacian_smoothing_with_center_normalizing(points.clone(), inner_index.clone(), neighbor_map.clone(), self.param.neck.x, axis, self.param.neck.r);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("sphire_right");
-        // let smoothed_point = laplacian_smoothing_with_center_normalizing(points.clone(), inner_index.clone(), neighbor_map.clone(), self.param.neck.x, axis, self.param.neck.r);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("periodic_left");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), bottom, axis_left, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-
-        // let inner_index = get_inner_index("periodic_right");
-        // let smoothed_point = laplacian_smoothing_on_plane(points.clone(), inner_index.clone(), neighbor_map.clone(), bottom, axis_right, 0.);
-        // inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);

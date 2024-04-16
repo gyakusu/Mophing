@@ -161,37 +161,37 @@ pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
     pub faces: Vec<Face>,
-    pub outer_index: Vec<usize>,
+    pub surface_faces: Vec<Face>,
     pub inner_index: Vec<usize>,
     pub neighbor_map: HashMap<usize, Vec<usize>>,
-    pub outer_map: HashMap<usize, Vec<usize>>,
+    pub surface_map: HashMap<usize, Vec<usize>>,
 }
 
 impl Mesh {
     pub fn new(points: Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
         let faces: Vec<Face> = tetras_to_faces(&tetras);
-        let outer_index: Vec<usize> = find_outer_index(faces.clone());
-        let inner_index: Vec<usize> = find_inner_index(faces.clone(), outer_index.clone());
+        let surface_faces: Vec<Face> = find_surface_faces(faces.clone());
+        let inner_index: Vec<usize> = find_inner_index(faces.clone(), surface_faces.clone());
         let neighbor_map: HashMap<usize, Vec<usize>> = find_neighbors(&tetras);
-        let outer_map: HashMap<usize, Vec<usize>> = find_outer_neighbors(&neighbor_map, &inner_index);
+        let surface_map: HashMap<usize, Vec<usize>> = find_surface_neighbors(&surface_faces);
 
-        Self::load(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map)
+        Self::load(points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map)
     }
 
-    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, Vec<Face>, Vec<usize>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
-        (self.points.clone(), self.tetras.clone(), self.faces.clone(), self.outer_index.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.outer_map.clone())
+    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, Vec<Face>, Vec<Face>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
+        (self.points.clone(), self.tetras.clone(), self.faces.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
 
-    pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, outer_index: Vec<usize>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, outer_map: HashMap<usize, Vec<usize>>) -> Self {
+    pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> Self {
         Self {
             points,
             tetras,
             faces,
-            outer_index,
+            surface_faces,
             inner_index,
             neighbor_map,
-            outer_map,
+            surface_map,
         }
     }
     pub fn smooth_inner(&mut self) {
@@ -215,39 +215,26 @@ pub fn tetras_to_faces(tetras: &Vec<Tetra>) -> Vec<Face> {
     }
     faces
 }
-pub fn find_outer_index(faces: Vec<Face>) -> Vec<usize> {
-
+pub fn find_surface_faces(faces: Vec<Face>) -> Vec<Face> {
     let mut face_counts: HashMap<Face, usize> = HashMap::new();
     for face in &faces {
         *face_counts.entry(face.clone()).or_insert(0) += 1;
     }
-    let shared_faces: HashSet<Face> = face_counts.iter()
-        .filter(|&(_face, &count)| count > 1)
-        // .filter(|&(_face, &count)| count == 2)
+    let surface_faces: Vec<Face> = face_counts.iter()
+        .filter(|&(_face, &count)| count == 1)
         .map(|(face, _count)| face.clone())
         .collect();
-    let not_shared_faces: Vec<Face> = faces.iter()
-        .filter(|face| !shared_faces.contains(face))
-        .cloned()
-        .collect();
-    let outer_map: HashSet<usize> = not_shared_faces.iter()
-        .flat_map(|face| face.index.iter())
-        .cloned()
-        .collect();
-    let mut outer_index: Vec<usize> = outer_map.iter().cloned().collect();
-    outer_index.sort();
-    outer_index
+    surface_faces
 }
-pub fn find_inner_index(faces: Vec<Face>, outer_index: Vec<usize>) -> Vec<usize> {
+pub fn find_inner_index(faces: Vec<Face>, surface_faces: Vec<Face>) -> Vec<usize> {
 
-    let all_index: HashSet<usize> = faces.iter()
-        .flat_map(|face| face.index.iter())
-        .cloned()
-        .collect();
-    let mut inner_index: Vec<usize> = all_index.difference(&outer_index.iter().cloned().collect())
-        .cloned()
-        .collect();
-    inner_index.sort();
+    let all_index: HashSet<usize> = faces.iter().flat_map(|face| face.index.iter().cloned()).collect();
+    let surface_index: HashSet<usize> = surface_faces.iter().flat_map(|face| face.index.iter().cloned()).collect();
+    let inner_index: HashSet<usize> = all_index.difference(&surface_index).cloned().collect();
+    let mut inner_index: Vec<usize> = inner_index.into_iter().collect();
+
+    inner_index.sort_unstable();
+
     inner_index
 }
 pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<usize, Vec<usize>> {
@@ -267,13 +254,19 @@ pub fn find_neighbors(tetras: &Vec<Tetra>) -> HashMap<usize, Vec<usize>> {
     }
     neighbor_map
 }
-pub fn find_outer_neighbors(neighbor_map: &HashMap<usize, Vec<usize>>, inner_index: &[usize]) -> HashMap<usize, Vec<usize>> {
-    let mut outer_map: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (key, value) in neighbor_map {
-        let filtered_value: Vec<usize> = value.iter().filter(|&index| !inner_index.contains(index)).cloned().collect();
-        outer_map.insert(*key, filtered_value);
+pub fn find_surface_neighbors(surface_faces: &Vec<Face>) -> HashMap<usize, Vec<usize>> {
+    let mut surface_map: HashMap<usize, Vec<usize>> = HashMap::new();
+    for face in surface_faces {
+        for &i in &face.index {
+            let neighbors: Vec<usize> = face.index.iter().cloned().filter(|&j| j != i).collect();
+            surface_map.entry(i).or_insert_with(Vec::new).extend(neighbors);
+        }
     }
-    outer_map
+    for (_key, value) in surface_map.iter_mut() {
+        value.sort_unstable(); // ソート
+        value.dedup(); // 重複の削除
+    }
+    surface_map
 }
 
 pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
@@ -355,18 +348,21 @@ mod tests {
     ];
 
     #[test]
-    fn test_find_outer_index() {
+    fn test_surface_faces() {
         let tetras = TETRAS0.to_vec();
         let faces = tetras_to_faces(&tetras);
-        let outer_index = find_outer_index(faces);
-        assert_eq!(outer_index, vec![1, 2, 3, 4]);
+        let surface_faces = find_surface_faces(faces.clone());
+        assert!(surface_faces.contains(&Face { index: [1, 2, 3] }));
+        assert!(surface_faces.contains(&Face { index: [1, 2, 4] }));
+        assert!(surface_faces.contains(&Face { index: [1, 3, 4] }));
+        assert!(surface_faces.contains(&Face { index: [2, 3, 4] }));
     }
     #[test]
     fn test_find_inner_index() {
         let tetras = TETRAS0.to_vec();
         let faces = tetras_to_faces(&tetras);
-        let outer_index = vec![1, 2, 3, 4];
-        let find_inner_index = find_inner_index(faces.clone(), outer_index);
+        let surface_faces = find_surface_faces(faces.clone());
+        let find_inner_index = find_inner_index(faces.clone(), surface_faces.clone());
         assert_eq!(find_inner_index, vec![0, ]);
     }
     #[test]
@@ -382,16 +378,17 @@ mod tests {
         assert_eq!(neighbor_map.get(&6), Some(&vec![0, 1, 2, 3, 4]));
     }
     #[test]
-    fn test_find_outer_neighbors() {
+    fn test_find_surface_neighbors() {
         let tetras = TETRAS1.to_vec();
-        let neighbor_map = find_neighbors(&tetras);
-        let inner_index = vec![0, 6];
-        let outer_map = find_outer_neighbors(&neighbor_map, &inner_index);
-        assert_eq!(outer_map.get(&1), Some(&vec![3, 4, 5, ]));
-        assert_eq!(outer_map.get(&2), Some(&vec![3, 4, 5, ]));
-        assert_eq!(outer_map.get(&3), Some(&vec![1, 2, 5, ]));
-        assert_eq!(outer_map.get(&4), Some(&vec![1, 2, 5, ]));
-        assert_eq!(outer_map.get(&5), Some(&vec![1, 2, 3, 4]));
+        let faces = tetras_to_faces(&tetras);
+        let surface_faces = find_surface_faces(faces.clone());
+        let surface_map = find_surface_neighbors(&surface_faces);
+        assert_eq!(surface_map.get(&1), Some(&vec![3, 4, 5, 6]));
+        assert_eq!(surface_map.get(&2), Some(&vec![3, 4, 5, 6]));
+        assert_eq!(surface_map.get(&3), Some(&vec![1, 2, 5, 6]));
+        assert_eq!(surface_map.get(&4), Some(&vec![1, 2, 5, 6]));
+        assert_eq!(surface_map.get(&5), Some(&vec![1, 2, 3, 4]));
+        assert_eq!(surface_map.get(&6), Some(&vec![1, 2, 3, 4]));
     }
     #[test]
     fn test_laplacian_smoothing() {
@@ -491,15 +488,15 @@ mod tests {
             Point { x: Vector3::new(2.0, 0.0, 0.0) }, // 3
         ];
         let inner_index = vec![1, 2, ];
-        let outer_map = {
-            let mut outer_map: HashMap<usize, Vec<usize>> = HashMap::new();
-            outer_map.insert(1, vec![0, 2]);
-            outer_map.insert(2, vec![1, 3]);
-            outer_map
+        let surface_map = {
+            let mut surface_map: HashMap<usize, Vec<usize>> = HashMap::new();
+            surface_map.insert(1, vec![0, 2]);
+            surface_map.insert(2, vec![1, 3]);
+            surface_map
         };
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), outer_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
+            points = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), surface_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
         }
 
         assert_ne!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });

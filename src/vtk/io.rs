@@ -97,16 +97,16 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     let points = read_point(vtk_path);
     let tetras = read_tetra(vtk_path);
 
-    let faces = read_face(setting_path).unwrap();
-    let outer_index = read_index(setting_path, "outer_index").unwrap();
+    let faces = read_face(setting_path, "face").unwrap();
+    let surface_faces = read_face(setting_path, "surface_face").unwrap();
     let inner_index = read_index(setting_path, "inner_index").unwrap();
     let neighbor_map = read_map(setting_path, "neighbor_map").unwrap();
-    let outer_map = read_map(setting_path, "outer_map").unwrap();
+    let surface_map = read_map(setting_path, "surface_map").unwrap();
 
-    Mesh::load(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map)
+    Mesh::load(points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map)
 }
 
-pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<usize>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, outer_map: HashMap<usize, Vec<usize>>) -> std::io::Result<()> {
+pub fn write_setting(setting_path: &str, faces: Vec<Face>,  surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> std::io::Result<()> {
     let file = File::create(setting_path)?;
     let mut writer = writer::EmitterConfig::new()
         .perform_indent(true)
@@ -123,10 +123,11 @@ pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<usiz
     }
     let _ = writer.write(writer::XmlEvent::end_element());
 
-    let _ = writer.write(writer::XmlEvent::start_element("outer_index"));
+    let _ = writer.write(writer::XmlEvent::start_element("surface_face"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
-    for i in outer_index {
-        let _ = writer.write(writer::XmlEvent::characters(&i.to_string()));
+    for face in surface_faces {
+        let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+        let _ = writer.write(writer::XmlEvent::characters(&face_str));
         let _ = writer.write(writer::XmlEvent::characters("\n"));
     }
     let _ = writer.write(writer::XmlEvent::end_element());
@@ -149,9 +150,9 @@ pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<usiz
     }
     let _ = writer.write(writer::XmlEvent::end_element());
 
-    let _ = writer.write(writer::XmlEvent::start_element("outer_map"));
+    let _ = writer.write(writer::XmlEvent::start_element("surface_map"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
-    for (key, values) in outer_map {
+    for (key, values) in surface_map {
         let values_str = values.into_iter().map(|v| v.to_string()).collect::<Vec<String>>().join(" ");
         let line = format!("{} {}", key, values_str);
         let _ = writer.write(writer::XmlEvent::characters(&line));
@@ -164,7 +165,7 @@ pub fn write_setting(setting_path: &str, faces: Vec<Face>, outer_index: Vec<usiz
     Ok(())
 }
 
-pub fn read_face(setting_path: &str) -> std::io::Result<Vec<Face>> {
+pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<Vec<Face>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -174,14 +175,14 @@ pub fn read_face(setting_path: &str) -> std::io::Result<Vec<Face>> {
 
     for e in parser {
         match e {
-            Ok(XmlEvent::StartElement { name, .. }) if name.local_name == "face" => {
+            Ok(XmlEvent::StartElement { name, .. }) if name.local_name == target => {
                 current_face.clear();
             }
             Ok(XmlEvent::Characters(s)) => {
                 let numbers: Vec<usize> = s.split_whitespace().map(|s| s.parse().unwrap()).collect();
                 current_face.extend(numbers);
             }
-            Ok(XmlEvent::EndElement { name }) if name.local_name == "face" => {
+            Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
                 while current_face.len() >= 3 {
                     let face = Face::new([current_face[0], current_face[1], current_face[2]]).unwrap();
                     faces.push(face);
@@ -415,23 +416,23 @@ mod tests {
         let mesh = read_vtk("data/Tetra.vtu");
 
         // mesh.save();
-        let(points, tetras, faces, outer_index, inner_index, neighbor_map, outer_map) = mesh.save();
+        let(points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map) = mesh.save();
         
-        _ = write_setting("data/Tetra_setting.xml", faces.clone(), outer_index.clone(), inner_index.clone(), neighbor_map.clone(), outer_map.clone());
+        _ = write_setting("data/Tetra_setting.xml", faces.clone(), surface_faces.clone(), inner_index.clone(), neighbor_map.clone(), surface_map.clone());
 
-        let faces0 = read_face("data/Tetra_setting.xml").unwrap();
-        let outer_index0 = read_index("data/Tetra_setting.xml", "outer_index").unwrap();
+        let faces0 = read_face("data/Tetra_setting.xml", "face").unwrap();
+        let surface_faces0 = read_face("data/Tetra_setting.xml", "surface_face").unwrap();
         let inner_index0 = read_index("data/Tetra_setting.xml", "inner_index").unwrap();
         let neighbor_map0 = read_map("data/Tetra_setting.xml", "neighbor_map").unwrap();
-        let outer_map0 = read_map("data/Tetra_setting.xml", "outer_map").unwrap();
+        let surface_map0 = read_map("data/Tetra_setting.xml", "surface_map").unwrap();
 
-        let _ = Mesh::load(points, tetras, faces0.clone(), outer_index0.clone(), inner_index0.clone(), neighbor_map0.clone(), outer_map0.clone());
+        let _ = Mesh::load(points, tetras, faces0.clone(), surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
 
         assert_eq!(faces.clone().first(), faces0.clone().first());
         assert_eq!(faces.clone().last(), faces0.clone().last());
 
-        assert_eq!(outer_index.clone().first(), outer_index0.clone().first());
-        assert_eq!(outer_index.clone().last(), outer_index0.clone().last());
+        assert_eq!(surface_faces.clone().first(), surface_faces0.clone().first());
+        assert_eq!(surface_faces.clone().last(), surface_faces0.clone().last());
 
         assert_eq!(inner_index.clone().first(), inner_index0.clone().first());
         assert_eq!(inner_index.clone().last(), inner_index0.clone().last());
@@ -439,8 +440,8 @@ mod tests {
         assert_eq!(neighbor_map.clone().get(&1).unwrap().first(), neighbor_map0.clone().get(&1).unwrap().first());
         assert_eq!(neighbor_map.clone().get(&1).unwrap().last(), neighbor_map0.clone().get(&1).unwrap().last());
 
-        assert_eq!(outer_map.clone().get(&1).unwrap().first(), outer_map0.clone().get(&1).unwrap().first());
-        assert_eq!(outer_map.clone().get(&1).unwrap().last(), outer_map0.clone().get(&1).unwrap().last());
+        assert_eq!(surface_map.clone().get(&10).unwrap().first(), surface_map0.clone().get(&10).unwrap().first());
+        assert_eq!(surface_map.clone().get(&10).unwrap().last(), surface_map0.clone().get(&10).unwrap().last());
     }
     #[test]
     #[ignore]
@@ -449,12 +450,11 @@ mod tests {
         let mesh1 = read_vtk("data/Tetra.vtu");
 
         assert_eq!(mesh0.points.last(), mesh1.points.last());
-        assert_eq!(mesh0.outer_index.last(), mesh1.outer_index.last());
         assert_eq!(mesh0.inner_index.last(), mesh1.inner_index.last());
         assert_eq!(mesh0.faces.last(), mesh1.faces.last());
         assert_eq!(mesh0.tetras.last(), mesh1.tetras.last());
         assert_eq!(mesh0.neighbor_map.get(&1).unwrap().last(), mesh1.neighbor_map.get(&1).unwrap().last());
-        assert_eq!(mesh0.outer_map.get(&1).unwrap().last(), mesh1.outer_map.get(&1).unwrap().last());
+        assert_eq!(mesh0.surface_map.get(&10).unwrap().last(), mesh1.surface_map.get(&10).unwrap().last());
 
         assert!(true);
     }
