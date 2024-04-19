@@ -39,18 +39,12 @@
                 }
             },
             "args": [
-                "data/Tetra_linspace.vtu", // 1: output
-                "2.345e-3", // 2: r0
-                "2.850e-3", // 3: r1
-                "0.93e-3",  // 4: h0
-                "2.10e-3",  // 5: h1
-                "0.10e-3",  // 6: bevel
-                "0.825e-3", // 7: pocket_r
-                "1.70e-3",  // 8: neck_x
-                "1.20e-3",  // 9: neck_r
-                "2.45e-3",  // 10: neck_h
-                "0.152e-3", // 11: neck_dh
-                "10",       // 12: iteration
+                // input_vtk, python_post, output_vtk
+                "data/Tetra.vtu,data/face_and_edge_index.xml,data/Tetra_linspace.vtu",
+                // r0,r1,h0,h1,bevel,pocket_r,neck_x,neck_r,neck_h,neck_dh,iteration
+                "2.345e-3,2.850e-3,0.93e-3,2.10e-3,0.10e-3,0.825e-3,1.70e-3,1.20e-3,2.45e-3,0.152e-3",
+                // itaraion
+                "10,",
             ],
             "cwd": "${workspaceFolder}"
         },
