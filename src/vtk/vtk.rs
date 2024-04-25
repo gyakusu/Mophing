@@ -168,7 +168,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn new(points: Vec<Point>, tetras: Vec<Tetra>) -> Self {
+    pub fn new(points: &Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
         let faces: Vec<Face> = tetras_to_faces(&tetras);
         let surface_faces: Vec<Face> = find_surface_faces(faces.clone());
@@ -183,9 +183,9 @@ impl Mesh {
         (self.points.clone(), self.tetras.clone(), self.faces.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
 
-    pub fn load(points: Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> Self {
+    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, faces: Vec<Face>, surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> Self {
         Self {
-            points,
+            points: points.clone(),
             tetras,
             faces,
             surface_faces,
@@ -195,7 +195,7 @@ impl Mesh {
         }
     }
     pub fn smooth_inner(&mut self) {
-        let new_points = laplacian_smoothing(self.points.clone(), self.inner_index.clone(), self.neighbor_map.clone());
+        let new_points = laplacian_smoothing(&self.points, self.inner_index.clone(), self.neighbor_map.clone());
         self.points = new_points;
     }
 }
@@ -269,7 +269,7 @@ pub fn find_surface_neighbors(surface_faces: &Vec<Face>) -> HashMap<usize, Vec<u
     surface_map
 }
 
-pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
+pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for &i in &inner_index {
@@ -279,7 +279,7 @@ pub fn laplacian_smoothing(points: Vec<Point>, inner_index: Vec<usize>, neighbor
     }
     new_points
 }
-pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_center_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for &i in &inner_index {
@@ -291,7 +291,7 @@ pub fn laplacian_smoothing_with_center_normalizing(points: Vec<Point>, inner_ind
     }
     new_points
 }
-pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_axis_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for &i in &inner_index {
@@ -303,7 +303,7 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: Vec<Point>, inner_index
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cone_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
@@ -315,7 +315,7 @@ pub fn laplacian_smoothing_with_cone_normalizing(points: Vec<Point>, inner_index
     }
     new_points
 }
-pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, _: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, _: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
     for &i in &inner_index {
@@ -325,6 +325,13 @@ pub fn laplacian_smoothing_on_plane(points: Vec<Point>, inner_index: Vec<usize>,
         new_points[i] = mean.project_on_plane(center, normal);
     }
     new_points
+}
+pub fn check_laplacian_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -> f32 {
+    let mut quality = 0.0;
+    for (old_point, new_point) in old_points.iter().zip(new_points.iter()) {
+        quality += (old_point.x - new_point.x).norm();
+    }
+    quality
 }
 #[cfg(test)]
 mod tests {
@@ -415,7 +422,7 @@ mod tests {
         };
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points = laplacian_smoothing(points.clone(), inner_index.clone(), neighbor_map.clone());
+            points = laplacian_smoothing(&points, inner_index.clone(), neighbor_map.clone());
         }
         assert_eq!(points[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
         assert_eq!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
@@ -496,7 +503,7 @@ mod tests {
         };
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points = laplacian_smoothing_with_axis_normalizing(points.clone(), inner_index.clone(), surface_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
+            points = laplacian_smoothing_with_axis_normalizing(&points, inner_index.clone(), surface_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
         }
 
         assert_ne!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });

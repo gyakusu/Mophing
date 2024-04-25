@@ -90,7 +90,7 @@ pub fn read_vtk(vtk_path: &str) -> Mesh {
     let points = read_point(vtk_path);
     let tetras = read_tetra(vtk_path);
 
-    let mesh = Mesh::new(points, tetras);
+    let mesh = Mesh::new(&points, tetras);
     mesh
 }
 pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
@@ -103,7 +103,7 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     let neighbor_map = read_map(setting_path, "neighbor_map").unwrap();
     let surface_map = read_map(setting_path, "surface_map").unwrap();
 
-    Mesh::load(points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map)
+    Mesh::load(&points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map)
 }
 
 pub fn write_setting(setting_path: &str, faces: Vec<Face>,  surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> std::io::Result<()> {
@@ -426,7 +426,7 @@ mod tests {
         let neighbor_map0 = read_map("data/Tetra_setting.xml", "neighbor_map").unwrap();
         let surface_map0 = read_map("data/Tetra_setting.xml", "surface_map").unwrap();
 
-        let _ = Mesh::load(points, tetras, faces0.clone(), surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
+        let _ = Mesh::load(&points, tetras, faces0.clone(), surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
 
         assert_eq!(faces.clone().first(), faces0.clone().first());
         assert_eq!(faces.clone().last(), faces0.clone().last());

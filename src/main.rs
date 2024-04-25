@@ -4,6 +4,7 @@ use std::f32::consts::PI;
 
 use mophing::vtk::io;
 use mophing::vtk::brg::{Brg, CageParameter, PocketParameter, NeckParameter};
+use mophing::vtk::vtk::check_laplacian_smoothing_quality;
 
 // example: `cargo run --release "data/Tetra.vtu,data/face_and_edge_index.xml,data/Tetra_linspace.vtu" "2.345e-3,2.850e-3,0.93e-3,2.10e-3,0.10e-3,0.825e-3,1.70e-3,1.20e-3,2.45e-3,0.152e-3" "100"`
 fn main() {
@@ -68,11 +69,33 @@ fn main() {
 
     let iteration = get_usize(0);
     
-    for _ in 0..iteration {
+    for i in 0..iteration {
+        let old_points = brg.get_points();
         brg.smooth_face();
+        let new_points = brg.get_points();
+
+        if i != 0 && (i & (i - 1)) == 0 {
+            let quality = check_laplacian_smoothing_quality(old_points, new_points);
+            print!("iteration: {:?}, ", i);
+            println!("quality: {:?}", quality);
+            if quality < 1e-7 {
+                break;
+            }
+        }
     }
-    for _ in 0..iteration {
+    for i in 0..iteration {
+        let old_points = brg.get_points();
         brg.smooth_inner();
+        let new_points = brg.get_points();
+
+        if i != 0 && (i & (i - 1)) == 0 {
+            let quality = check_laplacian_smoothing_quality(old_points, new_points);
+            print!("iteration: {:?}, ", i);
+            println!("quality: {:?}", quality);
+            if quality < 1e-7 {
+                break;
+            }
+        }
     }
     io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());
 
