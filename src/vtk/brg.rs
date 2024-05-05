@@ -110,9 +110,25 @@ impl CageParameter {
     }
 }
 #[derive(Clone, Debug)]
+pub struct BallParameter {
+    pub r: f32,
+    pub x: Vector3<f32>,
+    // pub map: HashMap<usize, Vec<usize>>,
+}
+impl BallParameter {
+    pub fn sample() -> Self {
+        BallParameter {
+            r: 0.778e-3,
+            x: Vector3::new(0.0, 2.645e-3, 2.0e-3),
+            // map: HashMap::new(),
+        }
+    }
+}
+#[derive(Clone, Debug)]
 pub struct Brg {
     mesh: Mesh,
-    param: CageParameter,
+    cage: CageParameter,
+    ball: BallParameter,
 
     edges: HashMap<String, Vec<usize>>,
     faces: HashMap<String, Vec<usize>>,
@@ -120,10 +136,11 @@ pub struct Brg {
     
 }
 impl Brg {
-    pub fn new(mesh: &Mesh, param: &CageParameter) -> Self {        
+    pub fn new(mesh: &Mesh, cage: &CageParameter) -> Self {        
         Brg {
             mesh: mesh.clone(),
-            param: param.clone(),
+            cage: cage.clone(),
+            ball: BallParameter::sample(),
             edges: HashMap::new(),   // エッジのインデックス
             faces: HashMap::new(),   // エッジを除く面のインデックス
             periodics: (Vec::new(), Vec::new()), // 周期境界のインデックス
@@ -131,8 +148,8 @@ impl Brg {
         }
     }
     pub fn sample(mesh: &Mesh) -> Self {
-        let param = CageParameter::sample();
-        Brg::new(mesh, &param)
+        let cage = CageParameter::sample();
+        Brg::new(mesh, &cage)
     }
     pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<usize>>, faces: HashMap<String, Vec<usize>>) {
         for (name, index) in edges {
@@ -151,47 +168,47 @@ impl Brg {
     pub fn set_points(&mut self, points: Vec<Point>) {
         self.mesh.points = points;
     }
-    fn get_curve_params(&self, param: &CageParameter, h: f32, n: usize) -> (Vector3<f32>, f32, f32) {
+    fn get_curve_params(&self, cage: &CageParameter, h: f32, n: usize) -> (Vector3<f32>, f32, f32) {
         let center: Vector3<f32> = Vector3::new(0.0, 0.0, h);
-        let theta = param.theta0;
-        let dtheta = (param.theta1 - param.theta0) / (n as f32 - 1.0);
+        let theta = cage.theta0;
+        let dtheta = (cage.theta1 - cage.theta0) / (n as f32 - 1.0);
         (center, theta, dtheta)
     }
-    fn get_asymmetry_curve_params(&self, param: &CageParameter, h: f32, n: usize, r0: f32, r1: f32) -> (Vector3<f32>, f32, f32, f32) {
+    fn get_asymmetry_curve_params(&self, cage: &CageParameter, h: f32, n: usize, r0: f32, r1: f32) -> (Vector3<f32>, f32, f32, f32) {
         let center: Vector3<f32> = Vector3::new(0.0, 0.0, h);
-        let y = param.neck.x[1];
-        let theta = param.theta0;
+        let y = cage.neck.x[1];
+        let theta = cage.theta0;
         let theta1 = -(calculate_x_diameter(r0, y, r1).0 / r0).asin();
         let dtheta = (theta1 - theta) / (n as f32 - 1.0);
         let radius = r0;
         (center, theta, dtheta, radius)
     }
-    fn get_asymmetry_curve_top_params(&self, param: &CageParameter, h: f32, n: usize, r0: f32, r1: f32, r2: f32) -> (Vector3<f32>, f32, f32, f32) {
+    fn get_asymmetry_curve_top_params(&self, cage: &CageParameter, h: f32, n: usize, r0: f32, r1: f32, r2: f32) -> (Vector3<f32>, f32, f32, f32) {
         let center: Vector3<f32> = Vector3::new(0.0, 0.0, h);
-        let y = param.pocket.x[1];
+        let y = cage.pocket.x[1];
         let theta = (calculate_x_diameter(r0, y, r1).0 / r0).asin();
         let theta1 = (calculate_x_diameter(r0, y, r2).0 / r0).asin();
         let dtheta = (theta1 - theta) / (n as f32 - 1.0);
         let radius = r0;
         (center, theta, dtheta, radius)
     }
-    fn get_collar_params(&self, param: &CageParameter, h: f32, n: usize, r: f32, x: f32, y: f32) -> (Vector3<f32>, f32, f32, f32) {
+    fn get_collar_params(&self, cage: &CageParameter, h: f32, n: usize, r: f32, x: f32, y: f32) -> (Vector3<f32>, f32, f32, f32) {
         let center: Vector3<f32> = Vector3::new(x, y, h);
-        let y0 = calculate_x_diameter(param.r0, y, r).1;
-        let y1 = calculate_x_diameter(param.r1, y, r).1;
+        let y0 = calculate_x_diameter(cage.r0, y, r).1;
+        let y1 = calculate_x_diameter(cage.r1, y, r).1;
         let theta = ((y0 - y) / r).acos();
         let theta1 = ((y1 - y) / r).acos();
         let dtheta = (theta1 - theta) / (n as f32 - 1.0);
         let radius = r;
         (center, -theta, dtheta, radius)
     }
-    fn get_ellipse_params(&self, param: &CageParameter, r: f32, n: usize) -> (f32, f32, f32, f32, f32, f32, f32) {
-        let x = param.pocket.x[0];
-        let y = param.pocket.x[1];
-        let z = param.pocket.x[2];
-        let dx = calculate_x_diameter(r, y, param.pocket.r).0;
-        let dz = calculate_z_diameter(r, y, param.pocket.r);
-        let cos_theta = (param.neck.h - param.neck.dh - z) / dz;
+    fn get_ellipse_params(&self, cage: &CageParameter, r: f32, n: usize) -> (f32, f32, f32, f32, f32, f32, f32) {
+        let x = cage.pocket.x[0];
+        let y = cage.pocket.x[1];
+        let z = cage.pocket.x[2];
+        let dx = calculate_x_diameter(r, y, cage.pocket.r).0;
+        let dz = calculate_z_diameter(r, y, cage.pocket.r);
+        let cos_theta = (cage.neck.h - cage.neck.dh - z) / dz;
         let theta = cos_theta.acos();
         let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);        
         (x, z, r, dx, dz, theta, dtheta)
@@ -207,180 +224,180 @@ impl Brg {
     }
     pub fn linspace(&self, name: &str) -> Vec<Point> {
     
-        let param = &self.param;
+        let cage = &self.cage;
         let n = self.edges.get(name).unwrap().len();
 
-        let r_middle = cutted_sphire_radius(param.pocket.r, param.neck.h - param.pocket.x[2] - param.neck.dh); // 円筒部における半径
-        let r_neck   = cutted_sphire_radius(param.neck.r, param.h1 - param.neck.x[2]); // 肩部における爪部の半径
-        let r_top    = cutted_sphire_radius(param.neck.r, param.neck.h - param.neck.x[2]); // 頂部における爪外径の半径
-        let r_apt    = r_middle + param.neck.dh * param.neck.r_ratio; // 頂部における爪内径の半径
+        let r_middle = cutted_sphire_radius(cage.pocket.r, cage.neck.h - cage.pocket.x[2] - cage.neck.dh); // 円筒部における半径
+        let r_neck   = cutted_sphire_radius(cage.neck.r, cage.h1 - cage.neck.x[2]); // 肩部における爪部の半径
+        let r_top    = cutted_sphire_radius(cage.neck.r, cage.neck.h - cage.neck.x[2]); // 頂部における爪外径の半径
+        let r_apt    = r_middle + cage.neck.dh * cage.neck.r_ratio; // 頂部における爪内径の半径
 
         let mut points: Vec<Point> = Vec::with_capacity(n);
 
         match name {
             "curve_bottom_in" => {
-                let (center, theta, dtheta) = self.get_curve_params(param, param.h0, n);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, param.r0 + param.bevel, theta, dtheta)));
+                let (center, theta, dtheta) = self.get_curve_params(cage, cage.h0, n);
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, cage.r0 + cage.bevel, theta, dtheta)));
             },
             "curve_bottom_out" => {
-                let (center, theta, dtheta) = self.get_curve_params(param, param.h0, n);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, param.r1 - param.bevel, theta, dtheta)));
+                let (center, theta, dtheta) = self.get_curve_params(cage, cage.h0, n);
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, cage.r1 - cage.bevel, theta, dtheta)));
             },
             "curve_in_bottom" => {
-                let (center, theta, dtheta) = self.get_curve_params(param, param.h0 + param.bevel, n);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, param.r0, theta, dtheta)));
+                let (center, theta, dtheta) = self.get_curve_params(cage, cage.h0 + cage.bevel, n);
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, cage.r0, theta, dtheta)));
             },
             "curve_out_bottom" => {
-                let (center, theta, dtheta) = self.get_curve_params(param, param.h0 + param.bevel, n);
-                (0..n).for_each(|i| points.push(linspace_arc(i, center, param.r1, theta, dtheta)));
+                let (center, theta, dtheta) = self.get_curve_params(cage, cage.h0 + cage.bevel, n);
+                (0..n).for_each(|i| points.push(linspace_arc(i, center, cage.r1, theta, dtheta)));
             },
             "curve_in_top_left" | "curve_in_top_right" => {
-                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_params(param, param.h1, n, param.r0, r_neck);
+                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_params(cage, cage.h1, n, cage.r0, r_neck);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
             },
             "curve_out_top_left" | "curve_out_top_right" => {
-                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_params(param, param.h1, n, param.r1, r_neck);
+                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_params(cage, cage.h1, n, cage.r1, r_neck);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, dtheta)));
             },
             "curve_top_in_left" | "curve_top_in_right" => {
-                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(param, param.neck.h, n, param.r0, r_top, r_apt);
+                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(cage, cage.neck.h, n, cage.r0, r_top, r_apt);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, -theta, -dtheta)));
             }
             "curve_top_out_left" | "curve_top_out_right" => {
-                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(param, param.neck.h, n, param.r1, r_top, r_apt);
+                let (center, theta, dtheta, radius) = self.get_asymmetry_curve_top_params(cage, cage.neck.h, n, cage.r1, r_top, r_apt);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, -theta, -dtheta)));
             },
             "straight_left_bottom" | "straight_right_bottom" => {
-                let r0 = param.r0 + param.bevel;
-                let dr = (param.r1 - param.bevel - r0) / (n as f32 - 1.0);
-                let sin = param.theta0.sin();
-                let cos = param.theta0.cos();
-                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0);
+                let r0 = cage.r0 + cage.bevel;
+                let dr = (cage.r1 - cage.bevel - r0) / (n as f32 - 1.0);
+                let sin = cage.theta0.sin();
+                let cos = cage.theta0.cos();
+                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, cage.h0);
                 let dx: Vector3<f32> = dr * Vector3::new(sin, cos, 0.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x, dx)));
             },
             "straight_in_left" | "straight_in_right" => {
-                let x = param.r0 * param.theta0.sin();
-                let y = param.r0 * param.theta0.cos();
-                let x0: Vector3<f32> = Vector3::new(x, y, param.h0 + param.bevel);
-                let x1: Vector3<f32> = Vector3::new(x, y, param.h1);
+                let x = cage.r0 * cage.theta0.sin();
+                let y = cage.r0 * cage.theta0.cos();
+                let x0: Vector3<f32> = Vector3::new(x, y, cage.h0 + cage.bevel);
+                let x1: Vector3<f32> = Vector3::new(x, y, cage.h1);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             },
             "straight_out_left" | "straight_out_right" => {
-                let x = param.r1 * param.theta0.sin();
-                let y = param.r1 * param.theta0.cos();
-                let x0: Vector3<f32> = Vector3::new(x, y, param.h0 + param.bevel);
-                let x1: Vector3<f32> = Vector3::new(x, y, param.h1);
+                let x = cage.r1 * cage.theta0.sin();
+                let y = cage.r1 * cage.theta0.cos();
+                let x0: Vector3<f32> = Vector3::new(x, y, cage.h0 + cage.bevel);
+                let x1: Vector3<f32> = Vector3::new(x, y, cage.h1);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             },
             "straight_top_left" | "straight_top_right" => {
-                let sin = param.theta0.sin();
-                let cos = param.theta0.cos();
-                let (r0, r1) = (param.r0, param.r1);
+                let sin = cage.theta0.sin();
+                let cos = cage.theta0.cos();
+                let (r0, r1) = (cage.r0, cage.r1);
                 let dr = (r1 - r0) / (n as f32 - 1.0);
-                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h1);
+                let x: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, cage.h1);
                 let dx: Vector3<f32> = dr * Vector3::new(sin, cos, 0.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x, dx)));
             },
             "slope_bottom_left_in" | "slope_bottom_right_in" => {
-                let sin = param.theta0.sin();
-                let cos = param.theta0.cos();
-                let (r0, r1) = (param.r0, param.r0 + param.bevel);
-                let x0: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0);
-                let x1: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0 + param.bevel);
+                let sin = cage.theta0.sin();
+                let cos = cage.theta0.cos();
+                let (r0, r1) = (cage.r0, cage.r0 + cage.bevel);
+                let x0: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, cage.h0);
+                let x1: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, cage.h0 + cage.bevel);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             }
             "slope_bottom_left_out" | "slope_bottom_right_out" => {
-                let sin = param.theta0.sin();
-                let cos = param.theta0.cos();
-                let(r0, r1) = (param.r1 - param.bevel, param.r1);
-                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, param.h0);
-                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, param.h0 + param.bevel);
+                let sin = cage.theta0.sin();
+                let cos = cage.theta0.cos();
+                let(r0, r1) = (cage.r1 - cage.bevel, cage.r1);
+                let x0: Vector3<f32> = Vector3::new(r0 * sin, r0 * cos, cage.h0);
+                let x1: Vector3<f32> = Vector3::new(r1 * sin, r1 * cos, cage.h0 + cage.bevel);
                 let dx: Vector3<f32> = (x1 - x0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, x0, dx)));
             }
             "slope_in_top_left" | "slope_in_top_right" => {
-                let y = param.neck.x[1];
-                let (x0, y0) = calculate_x_diameter(param.r0, y, r_apt);
-                let (x1, y1) = calculate_x_diameter(param.r0, y, r_middle);
-                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, param.neck.h);
-                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, param.neck.h - param.neck.dh * param.neck.h_ratio);
+                let y = cage.neck.x[1];
+                let (x0, y0) = calculate_x_diameter(cage.r0, y, r_apt);
+                let (x1, y1) = calculate_x_diameter(cage.r0, y, r_middle);
+                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, cage.neck.h);
+                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, cage.neck.h - cage.neck.dh * cage.neck.h_ratio);
                 let dx: Vector3<f32> = (xyz1 - xyz0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, xyz0, dx)));
             }
             "slope_out_top_left" | "slope_out_top_right" => {
-                let y = param.neck.x[1];
-                let (x0, y0) = calculate_x_diameter(param.r1, y, r_apt);
-                let (x1, y1) = calculate_x_diameter(param.r1, y, r_middle);
-                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, param.neck.h);
-                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, param.neck.h - param.neck.dh * param.neck.h_ratio);
+                let y = cage.neck.x[1];
+                let (x0, y0) = calculate_x_diameter(cage.r1, y, r_apt);
+                let (x1, y1) = calculate_x_diameter(cage.r1, y, r_middle);
+                let xyz1: Vector3<f32> = Vector3::new(-x0, y0, cage.neck.h);
+                let xyz0: Vector3<f32> = Vector3::new(-x1, y1, cage.neck.h - cage.neck.dh * cage.neck.h_ratio);
                 let dx: Vector3<f32> = (xyz1 - xyz0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(linspace_line(i, xyz0, dx)));
             }
             "collar_left_out" | "collar_right_out" => {
-                let (center, theta, dtheta, radius) = self.get_collar_params(param, param.h1, n, r_neck, param.neck.x[0], param.neck.x[1]);
+                let (center, theta, dtheta, radius) = self.get_collar_params(cage, cage.h1, n, r_neck, cage.neck.x[0], cage.neck.x[1]);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             }
             "collar_left_middle" | "collar_right_middle" => {
-                let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h, n, r_top, param.neck.x[0], param.neck.x[1]);
+                let (center, theta, dtheta, radius) = self.get_collar_params(cage, cage.neck.h, n, r_top, cage.neck.x[0], cage.neck.x[1]);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             }
             "collar_left_in" | "collar_right_in" => {
-                let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h, n, r_apt, param.neck.x[0], param.neck.x[1]);
+                let (center, theta, dtheta, radius) = self.get_collar_params(cage, cage.neck.h, n, r_apt, cage.neck.x[0], cage.neck.x[1]);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "collar_bottom_left" | "collar_bottom_right" => {
-                let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h - param.neck.dh, n, r_middle, param.pocket.x[0], param.pocket.x[1]);
+                let (center, theta, dtheta, radius) = self.get_collar_params(cage, cage.neck.h - cage.neck.dh, n, r_middle, cage.pocket.x[0], cage.pocket.x[1]);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "collar_middle_left" | "collar_middle_right" => {
-                let (center, theta, dtheta, radius) = self.get_collar_params(param, param.neck.h - param.neck.dh * param.neck.h_ratio, n, r_middle, param.pocket.x[0], param.pocket.x[1]);
+                let (center, theta, dtheta, radius) = self.get_collar_params(cage, cage.neck.h - cage.neck.dh * cage.neck.h_ratio, n, r_middle, cage.pocket.x[0], cage.pocket.x[1]);
                 (0..n).for_each(|i| points.push(linspace_arc(i, center, radius, theta, -dtheta)));
             },
             "ellipse_in_center" => {
-                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(param, param.r0, n);
+                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(cage, cage.r0, n);
                 (0..n).for_each(|i| points.push(linspace_ellipse(i, x, z, r, dx, dz, -theta, -dtheta)));
             },
             "ellipse_out_center" => {
-                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(param, param.r1, n);
+                let (x, z, r, dx, dz, theta, dtheta) = self.get_ellipse_params(cage, cage.r1, n);
                 (0..n).for_each(|i| points.push(linspace_ellipse(i, x, z, r, dx, dz, -theta, -dtheta)));
             },
             "ellipse_in_left" | "ellipse_in_right" => {
-                let z0 = param.h1;
-                let z1 = param.neck.h;
+                let z0 = cage.h1;
+                let z1 = cage.neck.h;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
                 for i in 0..n {
                     let h = z0 + dz * (i as f32);
-                    let r = cutted_sphire_radius(self.param.neck.r, h - param.neck.x[2]);
-                    let (x, y) = calculate_x_diameter(self.param.r0, self.param.neck.x[1], r);
+                    let r = cutted_sphire_radius(self.cage.neck.r, h - cage.neck.x[2]);
+                    let (x, y) = calculate_x_diameter(self.cage.r0, self.cage.neck.x[1], r);
                     points.push(Point::new(-x, y, h));
                 }
             },
             "ellipse_out_left" | "ellipse_out_right" => {
-                let z0 = param.h1;
-                let z1 = param.neck.h;
+                let z0 = cage.h1;
+                let z1 = cage.neck.h;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
                 for i in 0..n {
                     let h = z0 + dz * (i as f32);
-                    let r = cutted_sphire_radius(self.param.neck.r, h - param.neck.x[2]);
-                    let (x, y) = calculate_x_diameter(self.param.r1, self.param.neck.x[1], r);
+                    let r = cutted_sphire_radius(self.cage.neck.r, h - cage.neck.x[2]);
+                    let (x, y) = calculate_x_diameter(self.cage.r1, self.cage.neck.x[1], r);
                     points.push(Point::new(-x, y, h));
                 }
             },
             "stripe_in_left" | "stripe_in_right" => {
-                let (x, y) = calculate_x_diameter(param.r0, param.pocket.x[1], r_middle);
-                let z0 = param.neck.h - param.neck.dh;
-                let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
+                let (x, y) = calculate_x_diameter(cage.r0, cage.pocket.x[1], r_middle);
+                let z0 = cage.neck.h - cage.neck.dh;
+                let z1 = cage.neck.h - cage.neck.dh * cage.neck.h_ratio;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(Point::new(-x, y, z0 + dz * (i as f32))));
             },
             "stripe_out_left" | "stripe_out_right" => {
-                let (x, y) = calculate_x_diameter(param.r1, param.pocket.x[1], r_middle);
-                let z0 = param.neck.h - param.neck.dh;
-                let z1 = param.neck.h - param.neck.dh * param.neck.h_ratio;
+                let (x, y) = calculate_x_diameter(cage.r1, cage.pocket.x[1], r_middle);
+                let z0 = cage.neck.h - cage.neck.dh;
+                let z1 = cage.neck.h - cage.neck.dh * cage.neck.h_ratio;
                 let dz = (z1 - z0) / (n as f32 - 1.0);
                 (0..n).for_each(|i| points.push(Point::new(-x, y, z0 + dz * (i as f32))));
             },
@@ -425,16 +442,16 @@ impl Brg {
     }
     pub fn project_all(&mut self) {
 
-        let bottom: Vector3<f32>   = Vector3::new(0.0, 0.0, self.param.h0);
-        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.param.h1);
-        let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let bottom: Vector3<f32>   = Vector3::new(0.0, 0.0, self.cage.h0);
+        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.cage.h1);
+        let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.cage.neck.h);
         let axis: Vector3<f32>     = Vector3::new(0.0, 0.0, 1.0);
 
         for i in self.faces.get("curvature_in").unwrap_or(&Vec::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.param.r0);
+            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r0);
         }
         for i in self.faces.get("curvature_out").unwrap_or(&Vec::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.param.r1);
+            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r1);
         }
         for i in self.faces.get("bottom").unwrap_or(&Vec::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(bottom, axis);
@@ -452,24 +469,24 @@ impl Brg {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
         }
         for i in self.faces.get("sphire").unwrap_or(&Vec::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.pocket.x, self.param.pocket.r);
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.pocket.x, self.cage.pocket.r);
         }
         for i in self.faces.get("sphire_left").unwrap_or(&Vec::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.neck.x, self.param.neck.r);
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
         }
         for i in self.faces.get("sphire_right").unwrap_or(&Vec::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.param.neck.x, self.param.neck.r);
+            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
         }
     }
     pub fn smooth_face(&mut self) {
 
         let points = self.get_points();
-        let bottom: Vector3<f32>    = Vector3::new(0.0, 0.0, self.param.h0);
-        let shoulder: Vector3<f32>  = Vector3::new(0.0, 0.0, self.param.h1);
-        let top: Vector3<f32>       = Vector3::new(0.0, 0.0, self.param.neck.h);
+        let bottom: Vector3<f32>    = Vector3::new(0.0, 0.0, self.cage.h0);
+        let shoulder: Vector3<f32>  = Vector3::new(0.0, 0.0, self.cage.h1);
+        let top: Vector3<f32>       = Vector3::new(0.0, 0.0, self.cage.neck.h);
         let axis: Vector3<f32>      = Vector3::new(0.0, 0.0, 1.0);
-        let axis_left: Vector3<f32> = Vector3::new(self.param.theta0.cos(), self.param.theta0.sin(), 0.0);
-        let axis_right: Vector3<f32> = Vector3::new(self.param.theta1.cos(), self.param.theta1.sin(), 0.0);
+        let axis_left: Vector3<f32> = Vector3::new(self.cage.theta0.cos(), self.cage.theta0.sin(), 0.0);
+        let axis_right: Vector3<f32> = Vector3::new(self.cage.theta1.cos(), self.cage.theta1.sin(), 0.0);
 
         let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&Vec::new()).clone();
         let surface_map = self.mesh.surface_map.clone();
@@ -477,10 +494,10 @@ impl Brg {
         let operations: [(&str, fn(&Vec<Point>, Vec<usize>, HashMap<usize, Vec<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
         [
             ("curvature_in", laplacian_smoothing_with_axis_normalizing 
-            as fn(&_, _, _, _, _, _) -> _, bottom, axis, self.param.r0),
+            as fn(&_, _, _, _, _, _) -> _, bottom, axis, self.cage.r0),
 
             ("curvature_out", laplacian_smoothing_with_axis_normalizing 
-            as fn(&_, _, _, _, _, _) -> _, bottom, axis, self.param.r1),
+            as fn(&_, _, _, _, _, _) -> _, bottom, axis, self.cage.r1),
 
             ("bottom", laplacian_smoothing_on_plane 
             as fn(&_, _, _, _, _, _) -> _, bottom, axis, 0.),
@@ -498,13 +515,16 @@ impl Brg {
             as fn(&_, _, _, _, _, _) -> _, shoulder, axis, 0.),
 
             ("sphire", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, _, _, _, _, _) -> _, self.param.pocket.x, axis, self.param.pocket.r),
+            as fn(&_, _, _, _, _, _) -> _, self.cage.pocket.x, axis, self.cage.pocket.r),
 
             ("sphire_left", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, _, _, _, _, _) -> _, self.param.neck.x, axis, self.param.neck.r),
+            as fn(&_, _, _, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
 
             ("sphire_right", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, _, _, _, _, _) -> _, self.param.neck.x, axis, self.param.neck.r),
+            as fn(&_, _, _, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
+
+            // ("ball", laplacian_smoothing_with_center_normalizing 
+            // as fn(&_, _, _, _, _, _) -> _, self.ball.x, axis, self.ball.r),
 
             ("periodic_left", laplacian_smoothing_on_plane 
             as fn(&_, _, _, _, _, _) -> _, bottom, axis_left, 0.),
@@ -518,8 +538,20 @@ impl Brg {
             inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
         }
     }
+    pub fn smooth_ball(&mut self) {
+        let inner_index = self.faces.get("ball").unwrap_or(&Vec::new()).clone();
+        // let neighbor_map = self.mesh.surface_map.clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
+        let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), inner_index.clone(), neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
+        for i in inner_index.clone() {
+            self.mesh.points[i] = new_points[i];
+        }
+    }
     pub fn smooth_inner(&mut self) {
         self.mesh.smooth_inner();
+    }
+    pub fn smooth_inner_with_cotangent(&mut self) {
+        self.mesh.smooth_inner_with_cotangent();
     }
 }
 
@@ -550,7 +582,7 @@ mod tests {
     fn test_linspace_all() {
         let mesh = io::read_vtk("data/Tetra.vtu");
         let ratio = 0.99;
-        let param = CageParameter {
+        let cage = CageParameter {
             axis: Vector3::new(0.0, 0.0, 1.0),
             theta0: -PI / 6.0,
             theta1:  PI / 6.0,
@@ -572,7 +604,7 @@ mod tests {
                 r_ratio: 0.55 * ratio,
             },
         };
-        let mut brg = Brg::new(&mesh, &param);
+        let mut brg = Brg::new(&mesh, &cage);
         let edges = io::read_index_from_xml("data/face_and_edge_index.xml", "edge").unwrap();
         let faces = io::read_index_from_xml("data/face_and_edge_index.xml", "face").unwrap();    
         brg.set_edge_and_face(edges, faces);
@@ -583,3 +615,19 @@ mod tests {
 }
 
 
+
+    // pub fn set_ball_map(&mut self, map: HashMap<usize, Vec<usize>>) {
+    //     self.ball.map = map;
+    // }
+
+    // pub fn linspace_ball(&mut self) {
+
+    //     let inner_index: Vec<usize> = self.ball.map.keys().cloned().collect();
+    //     let neighbor_map = self.ball.map.clone();
+
+    //     let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), inner_index.clone(), neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
+
+    //     for i in inner_index.clone() {
+    //         self.mesh.points[i] = new_points[i];
+    //     }
+    // }

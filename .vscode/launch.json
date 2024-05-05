@@ -44,7 +44,7 @@
                 // r0,r1,h0,h1,bevel,pocket_r,neck_x,neck_r,neck_h,neck_dh,iteration
                 "2.345e-3,2.850e-3,0.93e-3,2.10e-3,0.10e-3,0.825e-3,1.70e-3,1.20e-3,2.45e-3,0.152e-3",
                 // itaraion
-                "10,",
+                "1000,",
             ],
             "cwd": "${workspaceFolder}"
         },

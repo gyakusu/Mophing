@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 extern crate nalgebra as na;
+// use na::ComplexField;
 use na::Vector3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -198,6 +199,10 @@ impl Mesh {
         let new_points = laplacian_smoothing(&self.points, self.inner_index.clone(), self.neighbor_map.clone());
         self.points = new_points;
     }
+    pub fn smooth_inner_with_cotangent(&mut self) {
+        let new_points = cotangent_laplacian_smoothing(&self.points, self.inner_index.clone(), self.neighbor_map.clone());
+        self.points = new_points;
+    }
 }
 pub fn tetras_to_faces(tetras: &Vec<Tetra>) -> Vec<Face> {
     let mut faces: Vec<Face> = Vec::new();
@@ -326,13 +331,43 @@ pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: Vec<usize>
     }
     new_points
 }
-pub fn check_laplacian_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -> f32 {
+pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
+
+    let mut new_points = points.clone();
+
+    for &i in &inner_index {
+        let neighbors = &neighbor_map[&i];
+        let mut sum = Vector3::zeros();
+        let mut weight = 0.0;
+        for &j in neighbors {
+            let p0: Vector3<f32> = points[i].as_vec();
+            let p1: Vector3<f32> = points[j].as_vec();
+            for &k in neighbors {
+                if k == j { continue; }
+                let p2: Vector3<f32> = points[k].as_vec();
+    
+                let v0: Vector3<f32> = p0 - p1;
+                let v1: Vector3<f32> = p2 - p1;
+                let cos_theta = v0.dot(&v1) / (v0.norm() * v1.norm());
+                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt().max(1e-10);
+                let cot_theta = cos_theta / sin_theta;
+                let w = cot_theta / 2.0;
+                sum += w * p1;
+                weight += w;
+            }
+        }
+        new_points[i] = Point::from_vec(sum / weight);
+    }
+    new_points
+}
+pub fn check_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -> f32 {
     let mut quality = 0.0;
     for (old_point, new_point) in old_points.iter().zip(new_points.iter()) {
-        quality += (old_point.x - new_point.x).norm();
+        quality += (old_point.x - new_point.x).norm_squared();
     }
     quality
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,7 +437,7 @@ mod tests {
         let sqrt3  = 1.7320508075688772;
         let sqrt27 = sqrt3 * 3.0;
 
-        let mut points = vec![
+        let points_init = vec![
             Point { x: Vector3::new(6.0, 1.0, 0.0) }, // 0
             Point { x: Vector3::new(7.0, 0.0, 1.0) }, // 1
             Point { x: Vector3::new(8.0, -1.0, 0.0) }, // 2
@@ -420,14 +455,26 @@ mod tests {
             neighbor_map.insert(3, vec![0, 5, 6]);
             neighbor_map
         };
+
+        let mut points0 = points_init.clone();
+
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points = laplacian_smoothing(&points, inner_index.clone(), neighbor_map.clone());
+            points0 = laplacian_smoothing(&points0, inner_index.clone(), neighbor_map.clone());
         }
-        assert_eq!(points[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
-        assert_eq!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
-        assert_eq!(points[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
-        assert_eq!(points[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
+        assert_eq!(points0[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
+        assert_eq!(points0[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_eq!(points0[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
+        assert_eq!(points0[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
+
+        let mut points1 = points_init.clone();
+        for _ in 0..iteration {
+            points1 = cotangent_laplacian_smoothing(&points1, inner_index.clone(), neighbor_map.clone());
+        }
+        assert_eq!(points0[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
+        assert_eq!(points0[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
+        assert_eq!(points0[2], Point { x: Vector3::new(1.0, -sqrt3, 0.0) });
+        assert_eq!(points0[3], Point { x: Vector3::new(-2.0, 0.0, 0.0) });
     }
 
     #[test]
