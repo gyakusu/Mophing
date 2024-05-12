@@ -11,6 +11,7 @@ use super::vtk::Face;
 use super::vtk::Point;
 use super::vtk::laplacian_smoothing_with_axis_normalizing;
 use super::vtk::laplacian_smoothing_with_center_normalizing;
+use super::vtk::laplacian_smoothing_with_cotangent_and_center_normalizing;
 // use super::vtk::laplacian_smoothing_with_cone_normalizing;
 
 fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Point {
@@ -64,8 +65,8 @@ pub struct NeckParameter {
     pub r: f32,
     pub h: f32,
     pub dh: f32,      // 保持器最高点からポケット面までの距離
-    pub h_ratio: f32, // 面取までの距離／ポケット面までの距離の比率
-    pub r_ratio: f32, // 面取半径／ポケット面までの距離の比率
+    pub h_ratio: f32, // 面取までの距離／dhの比率
+    pub r_ratio: f32, // 面取半径／dhの比率
 }
 #[derive(Clone, Debug)]
 pub struct CageParameter {
@@ -118,7 +119,8 @@ pub struct BallParameter {
 impl BallParameter {
     pub fn sample() -> Self {
         BallParameter {
-            r: 0.778e-3,
+            r: 0.76e-3,
+            // r: 0.778e-3,
             x: Vector3::new(0.0, 2.645e-3, 2.0e-3),
             // map: HashMap::new(),
         }
@@ -531,6 +533,9 @@ impl Brg {
 
             ("periodic_right", laplacian_smoothing_on_plane 
             as fn(&_, _, _, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // TODO: 円すい部分のスムージングもめんどくさいけどやること！
+            // (""),
         ];
         for (name, function, arg1, arg2, arg3) in operations.iter() {
             let inner_index = get_inner_index(name);
@@ -539,10 +544,17 @@ impl Brg {
         }
     }
     pub fn smooth_ball(&mut self) {
-        let inner_index = self.faces.get("ball").unwrap_or(&Vec::new()).clone();
-        // let neighbor_map = self.mesh.surface_map.clone();
+        let inner_index = self.faces.get("on_ball").unwrap_or(&Vec::new()).clone();
         let neighbor_map = self.mesh.neighbor_map.clone();
         let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), inner_index.clone(), neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
+        for i in inner_index.clone() {
+            self.mesh.points[i] = new_points[i];
+        }
+    }
+    pub fn smooth_ball_with_cotangent(&mut self) {
+        let inner_index = self.faces.get("on_ball").unwrap_or(&Vec::new()).clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
+        let new_points = laplacian_smoothing_with_cotangent_and_center_normalizing(&self.get_points(), inner_index.clone(), neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
         for i in inner_index.clone() {
             self.mesh.points[i] = new_points[i];
         }

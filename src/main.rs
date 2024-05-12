@@ -66,7 +66,9 @@ fn main() {
     brg.linspace_all();
     brg.project_all();
 
-    let iteration = arg_usize(0);
+    let iteration0 = arg_usize(0);
+    let iteration1 = arg_usize(1);
+    let iteration2 = arg_usize(2);
     
     fn smooth_and_check_quality(brg: &mut Brg, iteration: usize, smooth_fn: impl Fn(&mut Brg)) {
         for i in 0..iteration {
@@ -78,18 +80,23 @@ fn main() {
                 let quality = check_smoothing_quality(old_points, new_points);
                 print!("iteration: {:?}, ", i);
                 println!("quality: {:?}", quality);
-                if quality < 1e-16 {
+                if quality < 1e-18 {
                     break;
                 }
             }
         }
     }
-    smooth_and_check_quality(&mut brg, iteration, |brg| {
+    smooth_and_check_quality(&mut brg, iteration0, |brg| {
         brg.smooth_face()
     });
-    smooth_and_check_quality(&mut brg, iteration, |brg| {
+    smooth_and_check_quality(&mut brg, iteration1, |brg| {
         brg.smooth_ball();
         brg.smooth_inner();
+    });
+
+    smooth_and_check_quality(&mut brg, iteration2, |brg| {
+        brg.smooth_ball_with_cotangent();
+        // brg.smooth_inner_with_cotangent();
     });
 
     io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());

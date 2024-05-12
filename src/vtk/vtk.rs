@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::collections::HashMap;
 extern crate nalgebra as na;
-// use na::ComplexField;
 use na::Vector3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -32,7 +31,7 @@ impl Point {
     }
     pub fn project_on_circle(center: Vector3<f32>, direction: Vector3<f32>, radius: f32) -> Self {
         #[cfg(debug_assertions)] {
-            if (direction.norm() - 1.0).abs() > 1e-6 {
+            if (direction.norm_squared() - 1.0).abs() > 1e-6 {
                 panic!("direction must be normalized");
             }
         }
@@ -50,7 +49,7 @@ impl Point {
     }
     pub fn project_on_plane(&self, center: Vector3<f32>, normal: Vector3<f32>) -> Self {
         #[cfg(debug_assertions)] {
-            if (normal.norm() - 1.0).abs() > 1e-6 {
+            if (normal.norm_squared() - 1.0).abs() > 1e-6 {
                 panic!("normal must be normalized");
             }
         }
@@ -82,7 +81,7 @@ impl Point {
     }
     pub fn orthogonal(&self, center: Vector3<f32>, axis: Vector3<f32>) -> (Vector3<f32>, Vector3<f32>) {
         #[cfg(debug_assertions)] {
-            if (axis.norm() - 1.0).abs() > 1.0e-6 {
+            if (axis.norm_squared() - 1.0).abs() > 1.0e-6 {
                 panic!("axis must be normalized");
             }
         }
@@ -96,7 +95,7 @@ impl Point {
     }
     pub fn orthogonal_cone(&self, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Self {
         #[cfg(debug_assertions)] {
-            if (axis.norm() - 1.0).abs() > 1.0e-9 {
+            if (axis.norm_squared() - 1.0).abs() > 1.0e-9 {
                 panic!("axis must be normalized");
             }
         }
@@ -220,6 +219,20 @@ pub fn tetras_to_faces(tetras: &Vec<Tetra>) -> Vec<Face> {
     }
     faces
 }
+fn get_neighbors(neighbor_map: &HashMap<usize, Vec<usize>>, i: usize) -> &Vec<usize> {
+    #[cfg(debug_assertions)] {
+        match neighbor_map.get(&i) {
+            Some(neighbors) => neighbors,
+            None => {
+                println!("Key not found in neighbor_map: {}", i);
+                panic!("Key not found");
+            }
+        }
+    }
+    #[cfg(not(debug_assertions))] {
+        neighbor_map.get(&i).unwrap()
+    }
+}
 pub fn find_surface_faces(faces: Vec<Face>) -> Vec<Face> {
     let mut face_counts: HashMap<Face, usize> = HashMap::new();
     for face in &faces {
@@ -229,6 +242,7 @@ pub fn find_surface_faces(faces: Vec<Face>) -> Vec<Face> {
         .filter(|&(_face, &count)| count == 1)
         .map(|(face, _count)| face.clone())
         .collect();
+    
     surface_faces
 }
 pub fn find_inner_index(faces: Vec<Face>, surface_faces: Vec<Face>) -> Vec<usize> {
@@ -278,7 +292,7 @@ pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize>, neighbo
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
     }
@@ -288,7 +302,7 @@ pub fn laplacian_smoothing_with_center_normalizing(points: &Vec<Point>, inner_in
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
         let direction: Vector3<f32> = mean.direction(center);
@@ -300,7 +314,7 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: &Vec<Point>, inner_inde
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
         let (new_center, direction) = mean.orthogonal(center, axis);
@@ -313,7 +327,7 @@ pub fn laplacian_smoothing_with_cone_normalizing(points: &Vec<Point>, inner_inde
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
         new_points[i] = mean.orthogonal_cone(center, axis, ratio);
@@ -324,7 +338,8 @@ pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: Vec<usize>
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
+        
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
         new_points[i] = mean.project_on_plane(center, normal);
@@ -336,7 +351,7 @@ pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize
     let mut new_points = points.clone();
 
     for &i in &inner_index {
-        let neighbors = &neighbor_map[&i];
+        let neighbors = get_neighbors(&neighbor_map, i);
         let mut sum = Vector3::zeros();
         let mut weight = 0.0;
         for &j in neighbors {
@@ -349,7 +364,7 @@ pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize
                 let v0: Vector3<f32> = p0 - p1;
                 let v1: Vector3<f32> = p2 - p1;
                 let cos_theta = v0.dot(&v1) / (v0.norm() * v1.norm());
-                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt().max(1e-10);
+                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt().max(1e-3);
                 let cot_theta = cos_theta / sin_theta;
                 let w = cot_theta / 2.0;
                 sum += w * p1;
@@ -360,13 +375,51 @@ pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize
     }
     new_points
 }
+pub fn laplacian_smoothing_with_cotangent_and_center_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
+    let mut new_points = points.clone();
+
+    for &i in &inner_index {
+        let neighbors = get_neighbors(&neighbor_map, i);
+        let mut sum: Vector3<f32> = Vector3::zeros();
+        let mut weight = 0.0;
+        let p0: Vector3<f32> = points[i].as_vec();
+        for &j in neighbors {
+            let p1: Vector3<f32> = points[j].as_vec();
+            for &k in neighbors {
+                if k == j { continue; }
+                let p2: Vector3<f32> = points[k].as_vec();
+    
+                let v0: Vector3<f32> = p0 - p1;
+                let v1: Vector3<f32> = p2 - p1;
+                let cos_theta = v0.dot(&v1) / (v0.norm() * v1.norm());
+                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt().max(1e-3);
+                let cot_theta = cos_theta / sin_theta;
+                let w = cot_theta / 2.0;
+                sum += w * p1;
+                weight += w;
+            }
+        }
+        let mean = Point::from_vec(sum / weight);
+        let direction: Vector3<f32> = mean.direction(center);
+        new_points[i] = Point::project_on_circle(center, direction, radius);
+    }
+    new_points
+}
 pub fn check_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -> f32 {
     let mut quality = 0.0;
     for (old_point, new_point) in old_points.iter().zip(new_points.iter()) {
         quality += (old_point.x - new_point.x).norm_squared();
     }
-    quality
+    let n = old_points.len() as f32;
+    quality / n
 }
+// fn find_neighboring_tetra() {}
+
+// fn compute_dihedral_bisector_intersecting_points() {}
+
+// fn calculate_angles() {}
+
+
 
 #[cfg(test)]
 mod tests {
