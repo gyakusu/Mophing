@@ -77,7 +77,7 @@ fn main() {
     
             if i != 0 && (i & (i - 1)) == 0 {
                 let new_points = brg.get_points();
-                let quality = check_smoothing_quality(old_points, new_points);
+                let quality = check_smoothing_quality(&old_points, &new_points);
                 print!("iteration: {:?}, ", i);
                 println!("quality: {:?}", quality);
                 if quality < 1e-18 {

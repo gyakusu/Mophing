@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 extern crate nalgebra as na;
 use na::Vector3;
+use na::Matrix3;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Point {
@@ -171,8 +172,8 @@ impl Mesh {
     pub fn new(points: &Vec<Point>, tetras: Vec<Tetra>) -> Self {
         
         let faces: Vec<Face> = tetras_to_faces(&tetras);
-        let surface_faces: Vec<Face> = find_surface_faces(faces.clone());
-        let inner_index: Vec<usize> = find_inner_index(faces.clone(), surface_faces.clone());
+        let surface_faces: Vec<Face> = find_surface_faces(&faces);
+        let inner_index: Vec<usize> = find_inner_index(&faces, &surface_faces);
         let neighbor_map: HashMap<usize, Vec<usize>> = find_neighbors(&tetras);
         let surface_map: HashMap<usize, Vec<usize>> = find_surface_neighbors(&surface_faces);
 
@@ -195,11 +196,11 @@ impl Mesh {
         }
     }
     pub fn smooth_inner(&mut self) {
-        let new_points = laplacian_smoothing(&self.points, self.inner_index.clone(), self.neighbor_map.clone());
+        let new_points = laplacian_smoothing(&self.points, &self.inner_index, &self.neighbor_map);
         self.points = new_points;
     }
     pub fn smooth_inner_with_cotangent(&mut self) {
-        let new_points = cotangent_laplacian_smoothing(&self.points, self.inner_index.clone(), self.neighbor_map.clone());
+        let new_points = cotangent_laplacian_smoothing(&self.points, &self.inner_index, &self.neighbor_map);
         self.points = new_points;
     }
 }
@@ -233,9 +234,9 @@ fn get_neighbors(neighbor_map: &HashMap<usize, Vec<usize>>, i: usize) -> &Vec<us
         neighbor_map.get(&i).unwrap()
     }
 }
-pub fn find_surface_faces(faces: Vec<Face>) -> Vec<Face> {
+pub fn find_surface_faces(faces: &Vec<Face>) -> Vec<Face> {
     let mut face_counts: HashMap<Face, usize> = HashMap::new();
-    for face in &faces {
+    for face in faces {
         *face_counts.entry(face.clone()).or_insert(0) += 1;
     }
     let surface_faces: Vec<Face> = face_counts.iter()
@@ -245,7 +246,7 @@ pub fn find_surface_faces(faces: Vec<Face>) -> Vec<Face> {
     
     surface_faces
 }
-pub fn find_inner_index(faces: Vec<Face>, surface_faces: Vec<Face>) -> Vec<usize> {
+pub fn find_inner_index(faces: &Vec<Face>, surface_faces: &Vec<Face>) -> Vec<usize> {
 
     let all_index: HashSet<usize> = faces.iter().flat_map(|face| face.index.iter().cloned()).collect();
     let surface_index: HashSet<usize> = surface_faces.iter().flat_map(|face| face.index.iter().cloned()).collect();
@@ -288,20 +289,20 @@ pub fn find_surface_neighbors(surface_faces: &Vec<Face>) -> HashMap<usize, Vec<u
     surface_map
 }
 
-pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
+pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
     }
     new_points
 }
-pub fn laplacian_smoothing_with_center_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_center_normalizing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
@@ -310,10 +311,10 @@ pub fn laplacian_smoothing_with_center_normalizing(points: &Vec<Point>, inner_in
     }
     new_points
 }
-pub fn laplacian_smoothing_with_axis_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_axis_normalizing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
@@ -322,11 +323,11 @@ pub fn laplacian_smoothing_with_axis_normalizing(points: &Vec<Point>, inner_inde
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cone_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cone_normalizing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>, center: Vector3<f32>, axis: Vector3<f32>, ratio: f32) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         let mean = sum.mul(1.0 / neighbors.len() as f32);
@@ -334,10 +335,10 @@ pub fn laplacian_smoothing_with_cone_normalizing(points: &Vec<Point>, inner_inde
     }
     new_points
 }
-pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, _: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>, center: Vector3<f32>, normal: Vector3<f32>, _: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
@@ -346,11 +347,11 @@ pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: Vec<usize>
     }
     new_points
 }
-pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>) -> Vec<Point> {
+pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>) -> Vec<Point> {
 
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let mut sum = Vector3::zeros();
         let mut weight = 0.0;
@@ -375,10 +376,10 @@ pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: Vec<usize
     }
     new_points
 }
-pub fn laplacian_smoothing_with_cotangent_and_center_normalizing(points: &Vec<Point>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
+pub fn laplacian_smoothing_with_cotangent_and_center_normalizing(points: &Vec<Point>, inner_index: &Vec<usize>, neighbor_map: &HashMap<usize, Vec<usize>>, center: Vector3<f32>, _: Vector3<f32>, radius: f32) -> Vec<Point> {
     let mut new_points = points.clone();
 
-    for &i in &inner_index {
+    for &i in inner_index {
         let neighbors = get_neighbors(&neighbor_map, i);
         let mut sum: Vector3<f32> = Vector3::zeros();
         let mut weight = 0.0;
@@ -405,7 +406,7 @@ pub fn laplacian_smoothing_with_cotangent_and_center_normalizing(points: &Vec<Po
     }
     new_points
 }
-pub fn check_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -> f32 {
+pub fn check_smoothing_quality(old_points: &Vec<Point>, new_points: &Vec<Point>) -> f32 {
     let mut quality = 0.0;
     for (old_point, new_point) in old_points.iter().zip(new_points.iter()) {
         quality += (old_point.x - new_point.x).norm_squared();
@@ -413,14 +414,41 @@ pub fn check_smoothing_quality(old_points: Vec<Point>, new_points: Vec<Point>) -
     let n = old_points.len() as f32;
     quality / n
 }
-// fn find_neighboring_tetra() {}
+pub fn solve(a: Matrix3<f32>, b: Vector3<f32>) -> Vector3<f32> {
+    let det_a = a.determinant();
 
-// fn compute_dihedral_bisector_intersecting_points() {}
+    #[cfg(debug_assertions)] {
+        if det_a.abs() < 1e-6 {
+            panic!("The matrix is singular and cannot be solved using Cramer's rule.");
+        }
+    }
+    fn get_matrix(a: Matrix3<f32>, b: Vector3<f32>, i: usize) -> f32 {
+        let mut a1 = a;
+        a1.set_column(i, &b);
+        a1.determinant()
+    }
+    let det_a0 = get_matrix(a, b, 0);
+    let det_a1 = get_matrix(a, b, 1);
+    let det_a2 = get_matrix(a, b, 2);
 
-// fn calculate_angles() {}
-
-
-
+    Vector3::new(det_a0 / det_a, det_a1 / det_a, det_a2 / det_a)
+}
+pub fn get_normal_vectors(faces: &Vec<Face>, points: &Vec<Point>) -> Vec<Vector3<f32>> {
+    let mut normal_vectors: Vec<Vector3<f32>> = Vec::new();
+    // for face in faces {
+    for i in 0..faces.len() {
+        let face = faces[i];
+        let p0 = points[face.index[0]].as_vec();
+        let p1 = points[face.index[1]].as_vec();
+        let p2 = points[face.index[2]].as_vec();
+        let v0 = p1 - p0;
+        let v1 = p2 - p0;
+        let normal = v0.cross(&v1);
+        let norm = normal.norm();
+        normal_vectors.push(normal / norm);
+    }
+    normal_vectors
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,7 +474,7 @@ mod tests {
     fn test_surface_faces() {
         let tetras = TETRAS0.to_vec();
         let faces = tetras_to_faces(&tetras);
-        let surface_faces = find_surface_faces(faces.clone());
+        let surface_faces = find_surface_faces(&faces);
         assert!(surface_faces.contains(&Face { index: [1, 2, 3] }));
         assert!(surface_faces.contains(&Face { index: [1, 2, 4] }));
         assert!(surface_faces.contains(&Face { index: [1, 3, 4] }));
@@ -456,8 +484,8 @@ mod tests {
     fn test_find_inner_index() {
         let tetras = TETRAS0.to_vec();
         let faces = tetras_to_faces(&tetras);
-        let surface_faces = find_surface_faces(faces.clone());
-        let find_inner_index = find_inner_index(faces.clone(), surface_faces.clone());
+        let surface_faces = find_surface_faces(&faces);
+        let find_inner_index = find_inner_index(&faces, &surface_faces);
         assert_eq!(find_inner_index, vec![0, ]);
     }
     #[test]
@@ -476,7 +504,7 @@ mod tests {
     fn test_find_surface_neighbors() {
         let tetras = TETRAS1.to_vec();
         let faces = tetras_to_faces(&tetras);
-        let surface_faces = find_surface_faces(faces.clone());
+        let surface_faces = find_surface_faces(&faces);
         let surface_map = find_surface_neighbors(&surface_faces);
         assert_eq!(surface_map.get(&1), Some(&vec![3, 4, 5, 6]));
         assert_eq!(surface_map.get(&2), Some(&vec![3, 4, 5, 6]));
@@ -513,7 +541,7 @@ mod tests {
 
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points0 = laplacian_smoothing(&points0, inner_index.clone(), neighbor_map.clone());
+            points0 = laplacian_smoothing(&points0, &inner_index, &neighbor_map);
         }
         assert_eq!(points0[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
         assert_eq!(points0[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
@@ -522,7 +550,7 @@ mod tests {
 
         let mut points1 = points_init.clone();
         for _ in 0..iteration {
-            points1 = cotangent_laplacian_smoothing(&points1, inner_index.clone(), neighbor_map.clone());
+            points1 = cotangent_laplacian_smoothing(&points1, &inner_index, &neighbor_map);
         }
         assert_eq!(points0[0], Point { x: Vector3::new(0.0, 0.0, 0.0) });
         assert_eq!(points0[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
@@ -603,14 +631,31 @@ mod tests {
         };
         let iteration: usize = 50;
         for _ in 0..iteration {
-            points = laplacian_smoothing_with_axis_normalizing(&points, inner_index.clone(), surface_map.clone(), Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
+            points = laplacian_smoothing_with_axis_normalizing(&points, &inner_index, &surface_map, Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
         }
 
         assert_ne!(points[1], Point { x: Vector3::new(1.0, sqrt3, 0.0) });
         assert_ne!(points[2], Point { x: Vector3::new(sqrt3, 1.0, 0.0) });
     }
-
+    #[test]
+    fn test_solve() {
+        let a = Matrix3::new(
+            1.0, 2.0, 3.0,
+            4.0, 5.0, 6.0,
+            7.0, 8.0, 10.0,
+        );
+        let b = Vector3::new(1.0, 2.0, 3.0);
+        let x = solve(a, b);
+        let y = a.try_inverse().unwrap() * b;
+        assert_ne!(x, y);
+    }
 }
 
 
 
+
+// fn find_neighboring_tetra() {}
+
+// fn compute_dihedral_bisector_intersecting_points() {}
+
+// fn calculate_angles() {}
