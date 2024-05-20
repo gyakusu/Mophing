@@ -4,6 +4,7 @@ use std::collections::HashSet;
 extern crate nalgebra as na;
 
 use super::face::Face;
+use super::diamond::Diamond;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Tetra {
@@ -128,6 +129,32 @@ pub fn get_neighbors(neighbor_map: &HashMap<usize, HashSet<usize>>, i: usize) ->
         neighbor_map.get(&i).unwrap()
     }
 }
+pub fn make_inverse_map(inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Diamond>> {
+    let mut inverse_map: HashMap<usize, HashSet<Diamond>> = HashMap::new();
+
+    for (face, remains) in face_map {
+        for i in 0..3 {
+            if !inner_index.contains(&face.index[i]) {
+                continue;
+            }
+            let j = match i {
+                0 => [1, 2],
+                1 => [0, 2],
+                2 => [0, 1],
+                _ => [3, 3]
+            };
+            let k: Vec<_> = remains.iter().cloned().collect();
+            if k.len() != 2 {
+                panic!("Remains must have a length of 2");
+            }
+            let diamond = Diamond::new(face.index[j[0]], face.index[j[1]], k[0], k[1]);
+            
+            inverse_map.entry(face.index[i]).or_insert_with(HashSet::new).insert(diamond);
+        }
+    }
+    inverse_map
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -149,7 +176,6 @@ mod tests {
         Tetra { index: [0, 2, 4, 5] },
         Tetra { index: [0, 2, 4, 6] },
     ];
-
     #[test]
     fn test_contain_and_remain() {
         let tetra = Tetra::new([0, 10, 20, 30]).unwrap();
@@ -230,6 +256,20 @@ mod tests {
             assert!(surface_map.get(&5).unwrap().contains(&i));
             assert!(surface_map.get(&6).unwrap().contains(&i));
         }
+    }
+    #[test]
+    fn test_make_inverse_map() {
+        let tetras = TETRAS1.to_vec();
+        let face_map = tetras_to_face_map(&tetras);
+        let surface_faces = find_surface_faces(&face_map);
+        let inner_index = find_inner_index(&face_map, &surface_faces);
+        let inverse_map = make_inverse_map(&inner_index, &face_map);
+
+        let d0_len = inverse_map.get(&0).unwrap().len();
+        assert_eq!(d0_len, 12);
+
+        let d1_len = inverse_map.get(&1).unwrap_or(&HashSet::new()).len();
+        assert_eq!(d1_len, 0);
     }
 }
 

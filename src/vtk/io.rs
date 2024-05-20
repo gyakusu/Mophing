@@ -11,6 +11,7 @@ use super::face::Face;
 use super::point::Point;
 use super::tetra::Tetra;
 use super::mesh::Mesh;
+use super::diamond::Diamond;
 
 pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_section: &mut bool) {
     match e {
@@ -103,8 +104,9 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     let inner_index = read_index(setting_path, "inner_index").unwrap().into_iter().collect::<HashSet<usize>>();
     let neighbor_map = read_map(setting_path, "neighbor_map").unwrap();
     let surface_map = read_map(setting_path, "surface_map").unwrap();
+    let inverse_map = read_inverse_map(setting_path, "inverse_map").unwrap();
 
-    Mesh::load(&points, tetras, surface_faces, inner_index, neighbor_map, surface_map)
+    Mesh::load(&points, tetras, surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
 }
 
 pub fn write_setting(setting_path: &str, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
@@ -114,15 +116,6 @@ pub fn write_setting(setting_path: &str, surface_faces: HashSet<Face>, inner_ind
         .create_writer(file);
 
     let _ = writer.write(writer::XmlEvent::start_element("setting"));
-
-    // let _ = writer.write(writer::XmlEvent::start_element("face"));
-    // let _ = writer.write(writer::XmlEvent::characters("\n"));
-    // for face in faces {
-    //     let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-    //     let _ = writer.write(writer::XmlEvent::characters(&face_str));
-    //     let _ = writer.write(writer::XmlEvent::characters("\n"));
-    // }
-    // let _ = writer.write(writer::XmlEvent::end_element());
 
     let _ = writer.write(writer::XmlEvent::start_element("surface_face"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
@@ -253,6 +246,54 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usi
                     if let Some(key) = numbers.get(0) {
                         let values: HashSet<usize> = numbers[1..].iter().cloned().collect();
                         neighbor_map.insert(*key, values);
+                    }
+                }
+            }
+            Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
+                is_target_section = false;
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(neighbor_map)
+}
+pub fn read_inverse_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, HashSet<Diamond>>> {
+    let file = File::open(setting_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut neighbor_map = HashMap::new();
+    let mut is_target_section = false;
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                is_target_section = name.local_name == target;
+            }
+            Ok(XmlEvent::Characters(s)) if is_target_section => {
+                for line in s.lines() {
+                    let numbers: Vec<usize> 
+                    = line.split_whitespace()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                    if let Some(key) = numbers.get(0) {
+                        let value: Vec<usize> = numbers[1..].iter().cloned().collect();
+                        if value.len() % 4 != 0 {
+                            panic!("The number of values must be a multiple of 4.");
+                        }
+                        let mut diamonds = HashSet::new();
+                        for v in value.chunks(4) {
+                            if v.len() != 4 {
+                                panic!("The number of values must be 4.");
+                            }
+                            let diamond = Diamond::new(v[0], v[1], v[2], v[3]);
+                            diamonds.insert(diamond);
+                        }
+                        neighbor_map.insert(*key, diamonds);
                     }
                 }
             }
@@ -468,8 +509,9 @@ mod tests {
         let inner_index0 = read_index("data/Tetra_setting.xml", "inner_index").unwrap();
         let neighbor_map0 = read_map("data/Tetra_setting.xml", "neighbor_map").unwrap();
         let surface_map0 = read_map("data/Tetra_setting.xml", "surface_map").unwrap();
+        let inverse_map0 = read_inverse_map("data/Tetra_setting.xml", "inverse_map").unwrap();
 
-        let _ = Mesh::load(&points, tetras, surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
+        let _ = Mesh::load(&points, tetras, surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone(), inverse_map0.clone());
 
         // assert_eq!(faces.clone().first(), faces0.clone().first());
         // assert_eq!(faces.clone().last(), faces0.clone().last());

@@ -6,8 +6,9 @@ use na::Vector3;
 use super::point::Point;
 use super::face::Face;
 use super::tetra::Tetra;
+use super::diamond::Diamond;
 
-use super::tetra::{tetras_to_face_map, find_surface_faces, find_inner_index, get_neighbor_map, get_surface_map, get_neighbors};
+use super::tetra::{tetras_to_face_map, find_surface_faces, find_inner_index, get_neighbor_map, get_surface_map, get_neighbors, make_inverse_map};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Mesh {
@@ -17,6 +18,7 @@ pub struct Mesh {
     pub inner_index: HashSet<usize>,
     pub neighbor_map: HashMap<usize, HashSet<usize>>,
     pub surface_map: HashMap<usize, HashSet<usize>>,
+    pub inverse_map: HashMap<usize, HashSet<Diamond>>,
 }
 
 impl Mesh {
@@ -28,15 +30,16 @@ impl Mesh {
         let inner_index: HashSet<usize> = find_inner_index(&face_map, &surface_faces);
         let neighbor_map: HashMap<usize, HashSet<usize>> = get_neighbor_map(&tetras);
         let surface_map: HashMap<usize, HashSet<usize>> = get_surface_map(&surface_faces);
+        let inverse_map: HashMap<usize, HashSet<Diamond>> = make_inverse_map(&inner_index, &face_map);
 
-        Self::load(points, tetras,  surface_faces, inner_index, neighbor_map, surface_map)
+        Self::load(points, tetras,  surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
     }
 
     pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, HashSet<Face>, HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {
         (self.points.clone(), self.tetras.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
 
-    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>) -> Self {
+    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>, inverse_map: HashMap<usize, HashSet<Diamond>>) -> Self {
         Self {
             points: points.clone(),
             tetras,
@@ -44,6 +47,7 @@ impl Mesh {
             inner_index,
             neighbor_map,
             surface_map,
+            inverse_map,
         }
     }
     pub fn smooth_inner(&mut self) {
@@ -235,8 +239,6 @@ mod tests {
         let inner_index = [1, 2, ].iter().cloned().collect();
         let surface_map = {
             let mut surface_map: HashMap<usize, HashSet<usize>> = HashMap::new();
-            // surface_map.insert(1, vec![0, 2]);
-            // surface_map.insert(2, vec![1, 3]);
             surface_map.insert(1, [0, 2].iter().cloned().collect());
             surface_map.insert(2, [1, 3].iter().cloned().collect());
             surface_map
