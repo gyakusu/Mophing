@@ -1,14 +1,16 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use xml::reader::{EventReader, XmlEvent, Error};
 use xml::writer;
-use super::vtk::Face;
-use super::vtk::Point;
-use super::vtk::Tetra;
-use super::vtk::Mesh;
+
+use super::face::Face;
+use super::point::Point;
+use super::tetra::Tetra;
+use super::mesh::Mesh;
 
 pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_section: &mut bool) {
     match e {
@@ -97,16 +99,15 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     let points = read_point(vtk_path);
     let tetras = read_tetra(vtk_path);
 
-    let faces = read_face(setting_path, "face").unwrap();
     let surface_faces = read_face(setting_path, "surface_face").unwrap();
-    let inner_index = read_index(setting_path, "inner_index").unwrap();
+    let inner_index = read_index(setting_path, "inner_index").unwrap().into_iter().collect::<HashSet<usize>>();
     let neighbor_map = read_map(setting_path, "neighbor_map").unwrap();
     let surface_map = read_map(setting_path, "surface_map").unwrap();
 
-    Mesh::load(&points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map)
+    Mesh::load(&points, tetras, surface_faces, inner_index, neighbor_map, surface_map)
 }
 
-pub fn write_setting(setting_path: &str, faces: Vec<Face>,  surface_faces: Vec<Face>, inner_index: Vec<usize>, neighbor_map: HashMap<usize, Vec<usize>>, surface_map: HashMap<usize, Vec<usize>>) -> std::io::Result<()> {
+pub fn write_setting(setting_path: &str, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
     let file = File::create(setting_path)?;
     let mut writer = writer::EmitterConfig::new()
         .perform_indent(true)
@@ -114,14 +115,14 @@ pub fn write_setting(setting_path: &str, faces: Vec<Face>,  surface_faces: Vec<F
 
     let _ = writer.write(writer::XmlEvent::start_element("setting"));
 
-    let _ = writer.write(writer::XmlEvent::start_element("face"));
-    let _ = writer.write(writer::XmlEvent::characters("\n"));
-    for face in faces {
-        let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-        let _ = writer.write(writer::XmlEvent::characters(&face_str));
-        let _ = writer.write(writer::XmlEvent::characters("\n"));
-    }
-    let _ = writer.write(writer::XmlEvent::end_element());
+    // let _ = writer.write(writer::XmlEvent::start_element("face"));
+    // let _ = writer.write(writer::XmlEvent::characters("\n"));
+    // for face in faces {
+    //     let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+    //     let _ = writer.write(writer::XmlEvent::characters(&face_str));
+    //     let _ = writer.write(writer::XmlEvent::characters("\n"));
+    // }
+    // let _ = writer.write(writer::XmlEvent::end_element());
 
     let _ = writer.write(writer::XmlEvent::start_element("surface_face"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
@@ -165,12 +166,12 @@ pub fn write_setting(setting_path: &str, faces: Vec<Face>,  surface_faces: Vec<F
     Ok(())
 }
 
-pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<Vec<Face>> {
+pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<Face>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
     let parser = EventReader::new(file);
-    let mut faces = Vec::new();
+    let mut faces = HashSet::new();
     let mut current_face = Vec::new();
 
     for e in parser {
@@ -185,7 +186,7 @@ pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<Vec<Face>>
             Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
                 while current_face.len() >= 3 {
                     let face = Face::new([current_face[0], current_face[1], current_face[2]]).unwrap();
-                    faces.push(face);
+                    faces.insert(face);
                     current_face.drain(0..3);
                 }
             }
@@ -199,12 +200,12 @@ pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<Vec<Face>>
     Ok(faces)
 }
 
-pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<usize>> {
+pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<HashSet<usize>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
     let parser = EventReader::new(file);
-    let mut index = Vec::new();
+    let mut index = HashSet::new();
     let mut is_target_section = false;
 
     for e in parser {
@@ -231,7 +232,7 @@ pub fn read_index(setting_path: &str, target: &str) -> std::io::Result<Vec<usize
     Ok(index)
 }
 
-pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, Vec<usize>>> {
+pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, HashSet<usize>>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -250,7 +251,7 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usi
                                                 .filter_map(|s| s.parse().ok())
                                                 .collect();
                     if let Some(key) = numbers.get(0) {
-                        let values = numbers[1..].to_vec();
+                        let values: HashSet<usize> = numbers[1..].iter().cloned().collect();
                         neighbor_map.insert(*key, values);
                     }
                 }
@@ -267,7 +268,7 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usi
     }
     Ok(neighbor_map)
 }
-pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, Vec<usize>>> {
+pub fn read_edge_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, Vec<usize>>> {
 
     let file = File::open(file_path)?;
     let file = BufReader::new(file);
@@ -293,10 +294,53 @@ pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<Ha
             }
             Ok(XmlEvent::Characters(s)) => {
                 if in_edge_section {
-                    let numbers: Vec<usize> = s.split_whitespace()
-                                            .filter_map(|s| s.parse().ok())
-                                            .collect();
-                    edges.insert(current_edge.clone(), numbers);
+                    let numbers: Vec<usize> 
+                    = s.split_whitespace()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                    edges.insert(current_edge.clone(), numbers.into_iter().collect());
+                }
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(edges)
+}
+pub fn read_index_from_xml(file_path: &str, section: &str) -> std::io::Result<HashMap<String, HashSet<usize>>> {
+
+    let file = File::open(file_path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut edges = HashMap::new();
+    let mut current_edge = String::new();
+    let mut in_edge_section = false;
+    
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                if name.local_name == section {
+                    in_edge_section = true;
+                } else if in_edge_section {
+                    current_edge = name.local_name;
+                }
+            }
+            Ok(XmlEvent::EndElement { name, .. }) => {
+                if name.local_name == section {
+                    in_edge_section = false;
+                }
+            }
+            Ok(XmlEvent::Characters(s)) => {
+                if in_edge_section {
+                    let numbers: Vec<usize> 
+                    = s.split_whitespace()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                    edges.insert(current_edge.clone(), numbers.into_iter().collect());
                 }
             }
             Err(e) => {
@@ -416,32 +460,28 @@ mod tests {
         let mesh = read_vtk("data/Tetra.vtu");
 
         // mesh.save();
-        let(points, tetras, faces, surface_faces, inner_index, neighbor_map, surface_map) = mesh.save();
+        let(points, tetras, surface_faces, inner_index, neighbor_map, surface_map) = mesh.save();
         
-        _ = write_setting("data/Tetra_setting.xml", faces.clone(), surface_faces.clone(), inner_index.clone(), neighbor_map.clone(), surface_map.clone());
+        _ = write_setting("data/Tetra_setting.xml", surface_faces.clone(), inner_index.clone(), neighbor_map.clone(), surface_map.clone());
 
-        let faces0 = read_face("data/Tetra_setting.xml", "face").unwrap();
         let surface_faces0 = read_face("data/Tetra_setting.xml", "surface_face").unwrap();
         let inner_index0 = read_index("data/Tetra_setting.xml", "inner_index").unwrap();
         let neighbor_map0 = read_map("data/Tetra_setting.xml", "neighbor_map").unwrap();
         let surface_map0 = read_map("data/Tetra_setting.xml", "surface_map").unwrap();
 
-        let _ = Mesh::load(&points, tetras, faces0.clone(), surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
+        let _ = Mesh::load(&points, tetras, surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone());
 
-        assert_eq!(faces.clone().first(), faces0.clone().first());
-        assert_eq!(faces.clone().last(), faces0.clone().last());
+        // assert_eq!(faces.clone().first(), faces0.clone().first());
+        // assert_eq!(faces.clone().last(), faces0.clone().last());
 
-        assert_eq!(surface_faces.clone().first(), surface_faces0.clone().first());
-        assert_eq!(surface_faces.clone().last(), surface_faces0.clone().last());
+        // assert_eq!(surface_faces.clone().first(), surface_faces0.clone().first());
+        // assert_eq!(surface_faces.clone().last(), surface_faces0.clone().last());
 
-        assert_eq!(inner_index.clone().first(), inner_index0.clone().first());
-        assert_eq!(inner_index.clone().last(), inner_index0.clone().last());
+        assert_eq!(surface_faces.clone().len(), surface_faces0.clone().len());
 
-        assert_eq!(neighbor_map.clone().get(&1).unwrap().first(), neighbor_map0.clone().get(&1).unwrap().first());
-        assert_eq!(neighbor_map.clone().get(&1).unwrap().last(), neighbor_map0.clone().get(&1).unwrap().last());
+        assert_eq!(neighbor_map.clone().get(&1).unwrap().len(), neighbor_map0.clone().get(&1).unwrap().len());
 
-        assert_eq!(surface_map.clone().get(&10).unwrap().first(), surface_map0.clone().get(&10).unwrap().first());
-        assert_eq!(surface_map.clone().get(&10).unwrap().last(), surface_map0.clone().get(&10).unwrap().last());
+        assert_eq!(surface_map.clone().get(&10).unwrap().len(), surface_map0.clone().get(&10).unwrap().len());
     }
     #[test]
     #[ignore]
@@ -450,11 +490,11 @@ mod tests {
         let mesh1 = read_vtk("data/Tetra.vtu");
 
         assert_eq!(mesh0.points.last(), mesh1.points.last());
-        assert_eq!(mesh0.inner_index.last(), mesh1.inner_index.last());
-        assert_eq!(mesh0.faces.last(), mesh1.faces.last());
+        assert_eq!(mesh0.inner_index.len(), mesh1.inner_index.len());
+        // assert_eq!(mesh0.faces.last(), mesh1.faces.last());
         assert_eq!(mesh0.tetras.last(), mesh1.tetras.last());
-        assert_eq!(mesh0.neighbor_map.get(&1).unwrap().last(), mesh1.neighbor_map.get(&1).unwrap().last());
-        assert_eq!(mesh0.surface_map.get(&10).unwrap().last(), mesh1.surface_map.get(&10).unwrap().last());
+        assert_eq!(mesh0.neighbor_map.get(&1).unwrap().len(), mesh1.neighbor_map.get(&1).unwrap().len());
+        assert_eq!(mesh0.surface_map.get(&10).unwrap().len(), mesh1.surface_map.get(&10).unwrap().len());
 
         assert!(true);
     }

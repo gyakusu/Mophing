@@ -1,3 +1,4 @@
 /target
 /data
 *.pdf
+.DS_Store

@@ -1,18 +1,19 @@
 use std::f32::consts::PI;
 use std::vec;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 use nalgebra as na;
 use na::Vector3;
 
-use std::collections::HashMap;
-use super::vtk::laplacian_smoothing_on_plane;
-use super::vtk::Mesh;
-use super::vtk::Face;
-use super::vtk::Point;
-use super::vtk::laplacian_smoothing_with_axis_normalizing;
-use super::vtk::laplacian_smoothing_with_center_normalizing;
-use super::vtk::laplacian_smoothing_with_cotangent_and_center_normalizing;
-// use super::vtk::laplacian_smoothing_with_cone_normalizing;
+use super::point::Point;
+use super::mesh::Mesh;
+
+use super::mesh::laplacian_smoothing_on_plane;
+use super::mesh::laplacian_smoothing_with_axis_normalizing;
+use super::mesh::laplacian_smoothing_with_center_normalizing;
+use super::mesh::laplacian_smoothing_with_cotangent_and_center_normalizing;
+// use super::mesh::laplacian_smoothing_with_cone_normalizing;
 
 fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Point {
     let t: f32 = theta + dtheta * (i as f32);
@@ -114,7 +115,6 @@ impl CageParameter {
 pub struct BallParameter {
     pub r: f32,
     pub x: Vector3<f32>,
-    // pub map: HashMap<usize, Vec<usize>>,
 }
 impl BallParameter {
     pub fn sample() -> Self {
@@ -133,8 +133,8 @@ pub struct Brg {
     ball: BallParameter,
 
     edges: HashMap<String, Vec<usize>>,
-    faces: HashMap<String, Vec<usize>>,
-    periodics: (Vec<usize>, Vec<usize>),
+    faces: HashMap<String, HashSet<usize>>,
+    periodics: (HashSet<usize>, HashSet<usize>),
     
 }
 impl Brg {
@@ -145,7 +145,7 @@ impl Brg {
             ball: BallParameter::sample(),
             edges: HashMap::new(),   // エッジのインデックス
             faces: HashMap::new(),   // エッジを除く面のインデックス
-            periodics: (Vec::new(), Vec::new()), // 周期境界のインデックス
+            periodics: (HashSet::new(), HashSet::new()), // 周期境界のインデックス
             
         }
     }
@@ -153,7 +153,7 @@ impl Brg {
         let cage = CageParameter::sample();
         Brg::new(mesh, &cage)
     }
-    pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<usize>>, faces: HashMap<String, Vec<usize>>) {
+    pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<usize>>, faces: HashMap<String, HashSet<usize>>) {
         for (name, index) in edges {
             self.edges.insert(name, index);
         }
@@ -161,7 +161,7 @@ impl Brg {
             self.faces.insert(name, index);
         }
     }
-    pub fn set_periodic(&mut self, left: Vec<usize>, right: Vec<usize>) {
+    pub fn set_periodic(&mut self, left: HashSet<usize>, right: HashSet<usize>) {
         self.periodics = (left, right);
     }
     pub fn get_points(&self) -> Vec<Point> {
@@ -215,14 +215,13 @@ impl Brg {
         let dtheta = 2.0 * (PI - theta) / (n as f32 - 1.0);        
         (x, z, r, dx, dz, theta, dtheta)
     }
-    pub fn get_settings(&self) -> (Vec<Face>, Vec<usize>, HashMap<usize, Vec<usize>>, HashMap<usize, Vec<usize>>) {
+    pub fn get_settings(&self) -> (HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {
 
-        let faces = self.mesh.faces.clone();
         let inner_index = self.mesh.inner_index.clone();
         let neighbor_map = self.mesh.neighbor_map.clone();
         let surface_map = self.mesh.surface_map.clone();
 
-        (faces, inner_index, neighbor_map, surface_map)
+        (inner_index, neighbor_map, surface_map)
     }
     pub fn linspace(&self, name: &str) -> Vec<Point> {
     
@@ -449,34 +448,34 @@ impl Brg {
         let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.cage.neck.h);
         let axis: Vector3<f32>     = Vector3::new(0.0, 0.0, 1.0);
 
-        for i in self.faces.get("curvature_in").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("curvature_in").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r0);
         }
-        for i in self.faces.get("curvature_out").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("curvature_out").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r1);
         }
-        for i in self.faces.get("bottom").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("bottom").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(bottom, axis);
         }
-        for i in self.faces.get("top_left").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("top_left").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
         }
-        for i in self.faces.get("top_right").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("top_right").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
         }
-        for i in self.faces.get("shoulder_left").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("shoulder_left").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
         }
-        for i in self.faces.get("shoulder_right").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("shoulder_right").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
         }
-        for i in self.faces.get("sphire").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("sphire").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.pocket.x, self.cage.pocket.r);
         }
-        for i in self.faces.get("sphire_left").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("sphire_left").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
         }
-        for i in self.faces.get("sphire_right").unwrap_or(&Vec::new()).clone() {
+        for i in self.faces.get("sphire_right").unwrap_or(&HashSet::new()).clone() {
             self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
         }
     }
@@ -490,10 +489,10 @@ impl Brg {
         let axis_left: Vector3<f32> = Vector3::new(self.cage.theta0.cos(), self.cage.theta0.sin(), 0.0);
         let axis_right: Vector3<f32> = Vector3::new(self.cage.theta1.cos(), self.cage.theta1.sin(), 0.0);
 
-        let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&Vec::new()).clone();
+        let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&HashSet::new()).clone();
         let surface_map = self.mesh.surface_map.clone();
 
-        let operations: [(&str, fn(&Vec<Point>, &Vec<usize>, &HashMap<usize, Vec<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
+        let operations: [(&str, fn(&Vec<Point>, &HashSet<usize>, &HashMap<usize, HashSet<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
         [
             ("curvature_in", laplacian_smoothing_with_axis_normalizing 
             as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r0),
@@ -544,7 +543,7 @@ impl Brg {
         }
     }
     pub fn smooth_ball(&mut self) {
-        let inner_index = self.faces.get("on_ball").unwrap_or(&Vec::new()).clone();
+        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
         let neighbor_map = self.mesh.neighbor_map.clone();
         let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
         for i in inner_index.clone() {
@@ -552,7 +551,7 @@ impl Brg {
         }
     }
     pub fn smooth_ball_with_cotangent(&mut self) {
-        let inner_index = self.faces.get("on_ball").unwrap_or(&Vec::new()).clone();
+        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
         let neighbor_map = self.mesh.neighbor_map.clone();
         let new_points = laplacian_smoothing_with_cotangent_and_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
         for i in inner_index.clone() {
@@ -617,7 +616,7 @@ mod tests {
             },
         };
         let mut brg = Brg::new(&mesh, &cage);
-        let edges = io::read_index_from_xml("data/face_and_edge_index.xml", "edge").unwrap();
+        let edges = io::read_edge_from_xml("data/face_and_edge_index.xml", "edge").unwrap();
         let faces = io::read_index_from_xml("data/face_and_edge_index.xml", "face").unwrap();    
         brg.set_edge_and_face(edges, faces);
 
@@ -626,20 +625,3 @@ mod tests {
     }
 }
 
-
-
-    // pub fn set_ball_map(&mut self, map: HashMap<usize, Vec<usize>>) {
-    //     self.ball.map = map;
-    // }
-
-    // pub fn linspace_ball(&mut self) {
-
-    //     let inner_index: Vec<usize> = self.ball.map.keys().cloned().collect();
-    //     let neighbor_map = self.ball.map.clone();
-
-    //     let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), inner_index.clone(), neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
-
-    //     for i in inner_index.clone() {
-    //         self.mesh.points[i] = new_points[i];
-    //     }
-    // }

@@ -4,7 +4,7 @@ use std::f32::consts::PI;
 
 use mophing::vtk::io;
 use mophing::vtk::brg::{Brg, CageParameter, PocketParameter, NeckParameter};
-use mophing::vtk::vtk::check_smoothing_quality;
+use mophing::vtk::mesh::check_smoothing_quality;
 
 // example: `cargo run --release "data/Tetra.vtu,data/face_and_edge_index.xml,data/Tetra_linspace.vtu" "2.345e-3,2.850e-3,0.93e-3,2.10e-3,0.10e-3,0.825e-3,1.70e-3,1.20e-3,2.45e-3,0.152e-3" "100"`
 fn main() {
@@ -58,7 +58,7 @@ fn main() {
 
     let section0 = "edge";
     let section1 = "face";
-    let edges = io::read_index_from_xml(index_path, section0).unwrap();
+    let edges = io::read_edge_from_xml(index_path, section0).unwrap();
     let faces = io::read_index_from_xml(index_path, section1).unwrap();
 
     brg.set_edge_and_face(edges, faces);
