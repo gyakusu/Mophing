@@ -11,7 +11,7 @@ use super::face::Face;
 use super::point::Point;
 use super::tetra::Tetra;
 use super::mesh::Mesh;
-use super::diamond::Diamond;
+use super::flower::Flower;
 
 pub fn parse_section(e: Result<XmlEvent, Error>, attribute_value: &str, is_in_section: &mut bool) {
     match e {
@@ -178,7 +178,7 @@ pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<Fa
             }
             Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
                 while current_face.len() >= 3 {
-                    let face = Face::new([current_face[0], current_face[1], current_face[2]]).unwrap();
+                    let face = Face::new([current_face[0], current_face[1], current_face[2]]);
                     faces.insert(face);
                     current_face.drain(0..3);
                 }
@@ -261,7 +261,7 @@ pub fn read_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usi
     }
     Ok(neighbor_map)
 }
-pub fn read_inverse_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, HashSet<Diamond>>> {
+pub fn read_inverse_map(setting_path: &str, target: &str) -> std::io::Result<HashMap<usize, HashSet<Flower>>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -282,18 +282,18 @@ pub fn read_inverse_map(setting_path: &str, target: &str) -> std::io::Result<Has
                     .collect();
                     if let Some(key) = numbers.get(0) {
                         let value: Vec<usize> = numbers[1..].iter().cloned().collect();
-                        if value.len() % 4 != 0 {
-                            panic!("The number of values must be a multiple of 4.");
+                        if value.len() % 6 != 0 {
+                            panic!("The number of values must be a multiple of 6.");
                         }
-                        let mut diamonds = HashSet::new();
-                        for v in value.chunks(4) {
-                            if v.len() != 4 {
-                                panic!("The number of values must be 4.");
+                        let mut flowers = HashSet::new();
+                        for v in value.chunks(6) {
+                            if v.len() != 6 {
+                                panic!("The number of values must be 6.");
                             }
-                            let diamond = Diamond::new(v[0], v[1], v[2], v[3]);
-                            diamonds.insert(diamond);
+                            let flower = Flower::from_vec([v[0], v[1], v[2], v[3], v[4], v[5]]);
+                            flowers.insert(flower);
                         }
-                        neighbor_map.insert(*key, diamonds);
+                        neighbor_map.insert(*key, flowers);
                     }
                 }
             }

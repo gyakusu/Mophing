@@ -4,7 +4,7 @@ use std::collections::HashSet;
 extern crate nalgebra as na;
 
 use super::face::Face;
-use super::diamond::Diamond;
+use super::flower::Flower;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Tetra {
@@ -27,23 +27,21 @@ impl Tetra {
                 panic!("Index out of bounds: {}", i);
             }
         }
-        let indices: [usize; 3];
-        indices = match i {
+        let j: [usize; 3];
+        j = match i {
             0 => [1, 2, 3],
             1 => [0, 2, 3],
             2 => [0, 1, 3],
             3 => [0, 1, 2],
             _ => [4, 4, 4],
         };
-        Face {
-            index: [self.index[indices[0]], self.index[indices[1]], self.index[indices[2]]],
-        }
+        Face::new([self.index[j[0]], self.index[j[1]], self.index[j[2]]])
     }
     pub fn contain_and_remain(&self, face: &Face) -> (bool, usize) {
         let mut contain: [bool; 4] = [false; 4];
 
         for i in 0..4 {
-            contain[i] = face.index.contains(&self.index[i]);
+            contain[i] = face.as_i64().contains(&self.index[i]);
         }
         let sum = contain.iter().fold(0, |sum, &b| sum + b as usize);
         let remain = contain.iter().position(|&b| !b).unwrap();
@@ -80,14 +78,14 @@ pub fn find_inner_index(face_map: &HashMap<Face, HashSet<usize>>, surface_faces:
 
     let mut inner_index: HashSet<usize> = HashSet::new();
     for (face, _) in face_map {
-        inner_index.insert(face.index[0]);
-        inner_index.insert(face.index[1]);
-        inner_index.insert(face.index[2]);
+        inner_index.insert(face.get(0));
+        inner_index.insert(face.get(1));
+        inner_index.insert(face.get(2));
     }
     for surface_face in surface_faces {
-        inner_index.remove(&surface_face.index[0]);
-        inner_index.remove(&surface_face.index[1]);
-        inner_index.remove(&surface_face.index[2]);
+        inner_index.remove(&surface_face.get(0));
+        inner_index.remove(&surface_face.get(1));
+        inner_index.remove(&surface_face.get(2));
     }
     inner_index.into_iter().collect()
  }
@@ -108,8 +106,8 @@ pub fn get_neighbor_map(tetras: &Vec<Tetra>) -> HashMap<usize, HashSet<usize>> {
 pub fn get_surface_map(surface_faces: &HashSet<Face>) -> HashMap<usize, HashSet<usize>> {
     let mut surface_map: HashMap<usize, HashSet<usize>> = HashMap::new();
     for face in surface_faces {
-        for &i in &face.index {
-            let neighbors: HashSet<usize> = face.index.iter().cloned().filter(|&j| j != i).collect();
+        for &i in &face.as_i64() {
+            let neighbors: HashSet<usize> = face.as_i64().iter().cloned().filter(|&j| j != i).collect();
             surface_map.entry(i).or_insert_with(HashSet::new).extend(neighbors);
         }
     }
@@ -129,29 +127,9 @@ pub fn get_neighbors(neighbor_map: &HashMap<usize, HashSet<usize>>, i: usize) ->
         neighbor_map.get(&i).unwrap()
     }
 }
-pub fn make_inverse_map(inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Diamond>> {
-    let mut inverse_map: HashMap<usize, HashSet<Diamond>> = HashMap::new();
+pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Flower>> {
+    let mut inverse_map: HashMap<usize, HashSet<Flower>> = HashMap::new();
 
-    for (face, remains) in face_map {
-        for i in 0..3 {
-            if !inner_index.contains(&face.index[i]) {
-                continue;
-            }
-            let j = match i {
-                0 => [1, 2],
-                1 => [0, 2],
-                2 => [0, 1],
-                _ => [3, 3]
-            };
-            let k: Vec<_> = remains.iter().cloned().collect();
-            if k.len() != 2 {
-                panic!("Remains must have a length of 2");
-            }
-            let diamond = Diamond::new(face.index[j[0]], face.index[j[1]], k[0], k[1]);
-            
-            inverse_map.entry(face.index[i]).or_insert_with(HashSet::new).insert(diamond);
-        }
-    }
     inverse_map
 }
 
@@ -179,12 +157,12 @@ mod tests {
     #[test]
     fn test_contain_and_remain() {
         let tetra = Tetra::new([0, 10, 20, 30]).unwrap();
-        let face0 = Face::new([0, 10, 20]).unwrap();
+        let face0 = Face::new([0, 10, 20]);
         let (contain0, remain0) = tetra.contain_and_remain(&face0);
         assert_eq!(contain0, true);
         assert_eq!(remain0, 30);
 
-        let face1 = Face::new([0, 10, 40]).unwrap();
+        let face1 = Face::new([0, 10, 40]);
         let (contain1, remain1) = tetra.contain_and_remain(&face1);
         assert_eq!(contain1, false);
         assert!(remain1 > usize::MIN);
@@ -193,11 +171,11 @@ mod tests {
     fn test_tetras_to_face_map() {
         let tetras = TETRAS0.to_vec();
         let face_map = tetras_to_face_map(&tetras);
-        let remain0 = face_map.get(&Face::new([0, 1, 2]).unwrap()).unwrap();
+        let remain0 = face_map.get(&Face::new([0, 1, 2])).unwrap();
         assert!(remain0.contains(&3));
         assert!(remain0.contains(&4));
 
-        let remain1 = face_map.get(&Face::new([1, 2, 3]).unwrap()).unwrap();
+        let remain1 = face_map.get(&Face::new([1, 2, 3])).unwrap();
         assert!(remain1.contains(&0));
     }
     #[test]
@@ -205,10 +183,10 @@ mod tests {
         let tetras = TETRAS0.to_vec();
         let face_map = tetras_to_face_map(&tetras);
         let surface_faces = find_surface_faces(&face_map);
-        assert!(surface_faces.contains(&Face { index: [1, 2, 3] }));
-        assert!(surface_faces.contains(&Face { index: [1, 2, 4] }));
-        assert!(surface_faces.contains(&Face { index: [1, 3, 4] }));
-        assert!(surface_faces.contains(&Face { index: [2, 3, 4] }));
+        assert!(surface_faces.contains(&Face::new([1, 2, 3])));
+        assert!(surface_faces.contains(&Face::new([1, 2, 4])));
+        assert!(surface_faces.contains(&Face::new([1, 3, 4])));
+        assert!(surface_faces.contains(&Face::new([2, 3, 4])));
     }
     #[test]
     fn test_find_inner_index() {
@@ -263,9 +241,9 @@ mod tests {
         let face_map = tetras_to_face_map(&tetras);
         let surface_faces = find_surface_faces(&face_map);
         let inner_index = find_inner_index(&face_map, &surface_faces);
-        let inverse_map = make_inverse_map(&inner_index, &face_map);
+        let inverse_map = make_inverse_map(&tetras, &inner_index, &face_map);
 
-        let d0_len = inverse_map.get(&0).unwrap().len();
+        let d0_len = inverse_map.get(&0).unwrap_or(&HashSet::new()).len();
         assert_eq!(d0_len, 12);
 
         let d1_len = inverse_map.get(&1).unwrap_or(&HashSet::new()).len();

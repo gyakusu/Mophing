@@ -4,6 +4,7 @@ pub mod mesh;
 pub mod face;
 pub mod point;
 pub mod tetra;
-pub mod diamond;
+pub mod flower;
+pub mod math;
 
 

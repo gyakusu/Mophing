@@ -2,6 +2,8 @@ extern crate nalgebra as na;
 use na::Vector3;
 use na::Matrix3;
 
+use super::point::Point;
+
 pub fn solve(a: Matrix3<f32>, b: Vector3<f32>) -> Vector3<f32> {
     let det_a = a.determinant();
 
@@ -32,6 +34,20 @@ pub fn get_normal_vector(points: &Vec<Point>) -> Vector3<f32> {
     let norm = normal.norm();
     normal / norm
 }
+pub fn sort_three_numbers(v: [usize; 3]) -> [usize; 3] {
+    let a = v[0];
+    let b = v[1];
+    let c = v[2];
+    match (a < b, b < c, a < c) {
+        (true, true, _) => [a, b, c],
+        (true, false, true) => [a, c, b],
+        (true, false, false) => [c, a, b],
+        (false, true, true) => [b, a, c],
+        (false, true, false) => [b, c, a],
+        (false, false, true) => [b, c, a],
+        (false, false, false) => [c, b, a],
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -49,5 +65,13 @@ mod tests {
         let y: Vector3<f32> = a.try_inverse().unwrap() * b;
         assert_ne!(x, y);
     }
-
+    #[test]
+    fn test_face_sort_three_numbers() {
+        assert_eq!(sort_three_numbers([1, 2, 3]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([1, 3, 2]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([2, 1, 3]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([2, 3, 1]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([3, 1, 2]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([3, 2, 1]), [1, 2, 3]);
+    }
 }

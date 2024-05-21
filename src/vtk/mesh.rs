@@ -6,7 +6,7 @@ use na::Vector3;
 use super::point::Point;
 use super::face::Face;
 use super::tetra::Tetra;
-use super::diamond::Diamond;
+use super::flower::Flower;
 
 use super::tetra::{tetras_to_face_map, find_surface_faces, find_inner_index, get_neighbor_map, get_surface_map, get_neighbors, make_inverse_map};
 
@@ -18,7 +18,7 @@ pub struct Mesh {
     pub inner_index: HashSet<usize>,
     pub neighbor_map: HashMap<usize, HashSet<usize>>,
     pub surface_map: HashMap<usize, HashSet<usize>>,
-    pub inverse_map: HashMap<usize, HashSet<Diamond>>,
+    pub inverse_map: HashMap<usize, HashSet<Flower>>,
 }
 
 impl Mesh {
@@ -30,7 +30,7 @@ impl Mesh {
         let inner_index: HashSet<usize> = find_inner_index(&face_map, &surface_faces);
         let neighbor_map: HashMap<usize, HashSet<usize>> = get_neighbor_map(&tetras);
         let surface_map: HashMap<usize, HashSet<usize>> = get_surface_map(&surface_faces);
-        let inverse_map: HashMap<usize, HashSet<Diamond>> = make_inverse_map(&inner_index, &face_map);
+        let inverse_map: HashMap<usize, HashSet<Flower>> = make_inverse_map(&tetras, &inner_index, &face_map);
 
         Self::load(points, tetras,  surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
     }
@@ -39,7 +39,7 @@ impl Mesh {
         (self.points.clone(), self.tetras.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
 
-    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>, inverse_map: HashMap<usize, HashSet<Diamond>>) -> Self {
+    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>, inverse_map: HashMap<usize, HashSet<Flower>>) -> Self {
         Self {
             points: points.clone(),
             tetras,
