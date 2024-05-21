@@ -61,7 +61,10 @@ fn main() {
     let edges = io::read_edge_from_xml(index_path, section0).unwrap();
     let faces = io::read_index_from_xml(index_path, section1).unwrap();
 
-    brg.set_edge_and_face(edges, faces);
+    brg.set_edge_and_face(&edges, &faces);
+
+    println!("set edge and face done");
+    println!("edge: {:?}", edges.len());
 
     brg.linspace_all();
     brg.project_all();

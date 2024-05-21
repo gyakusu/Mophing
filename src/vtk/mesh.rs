@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 extern crate nalgebra as na;
 use na::Vector3;
+use na::Matrix3;
 
 use super::point::Point;
 use super::face::Face;
@@ -9,6 +10,38 @@ use super::tetra::Tetra;
 use super::flower::Flower;
 
 use super::tetra::{tetras_to_face_map, find_surface_faces, find_inner_index, get_neighbor_map, get_surface_map, get_neighbors, make_inverse_map};
+use super::math::{get_normal_vector, solve};
+
+fn face_normal(points: &Vec<Point>, face: &[usize; 3]) -> Vector3<f32> {
+    let three_points = [points[face[0]].clone(), points[face[1]].clone(), points[face[2]].clone()];
+    get_normal_vector(&three_points)
+}
+fn face_matrix(points: &Vec<Point>, face: &[usize; 3]) -> Matrix3<f32> {
+    let mut c: Matrix3<f32> = Matrix3::zeros();
+    c.set_column(0, &points[face[1]].clone().as_vec());
+    c.set_column(1, &points[face[2]].clone().as_vec());
+    c.set_column(2, &points[face[0]].clone().as_vec());
+    c
+}
+fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<f32> {
+
+    let mut a: Matrix3<f32> = Matrix3::zeros();
+
+    let v0: Vector3<f32> = face_normal(&points, &flower.bottom());
+    for i in 0..3 {
+        let v1: Vector3<f32> = face_normal(&points, &flower.get(i));
+        let bisector: Vector3<f32> = v1 + v0;
+        a.set_column(i, &bisector);
+    }
+    return a
+}
+pub fn get_intersection_of_flower(flower: &Flower, points: &Vec<Point>) -> Point {
+    let a: Matrix3<f32> = angular_bisector_matrix(flower, points);
+    let c: Matrix3<f32> = face_matrix(points, &flower.bottom());
+    let b: Vector3<f32> = a.component_mul(&c).row_sum_tr();
+
+    Point::from_vec(solve(a.transpose(), b))
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Mesh {
@@ -22,7 +55,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn new(points: &Vec<Point>, tetras: Vec<Tetra>) -> Self {
+    pub fn new(points: &Vec<Point>, tetras: &Vec<Tetra>) -> Self {
 
         let face_map = tetras_to_face_map(&tetras);
         let surface_faces = find_surface_faces(&face_map);
@@ -32,22 +65,22 @@ impl Mesh {
         let surface_map: HashMap<usize, HashSet<usize>> = get_surface_map(&surface_faces);
         let inverse_map: HashMap<usize, HashSet<Flower>> = make_inverse_map(&tetras, &inner_index, &face_map);
 
-        Self::load(points, tetras, surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
+        Self::load(points, tetras, &surface_faces, &inner_index, &neighbor_map, &surface_map, &inverse_map)
     }
 
     pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, HashSet<Face>, HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {
         (self.points.clone(), self.tetras.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
 
-    pub fn load(points: &Vec<Point>, tetras: Vec<Tetra>, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>, inverse_map: HashMap<usize, HashSet<Flower>>) -> Self {
+    pub fn load(points: &Vec<Point>, tetras: &Vec<Tetra>, surface_faces: &HashSet<Face>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>, inverse_map: &HashMap<usize, HashSet<Flower>>) -> Self {
         Self {
             points: points.clone(),
-            tetras,
-            surface_faces,
-            inner_index,
-            neighbor_map,
-            surface_map,
-            inverse_map,
+            tetras: tetras.clone(),
+            surface_faces: surface_faces.clone(),
+            inner_index: inner_index.clone(),
+            neighbor_map: neighbor_map.clone(),
+            surface_map: surface_map.clone(),
+            inverse_map: inverse_map.clone(),
         }
     }
     pub fn smooth_inner(&mut self) {
@@ -189,6 +222,48 @@ pub fn check_smoothing_quality(old_points: &Vec<Point>, new_points: &Vec<Point>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_face_normal() {
+        let points = vec![
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+        ];
+        let face = [0, 1, 2];
+        let normal = face_normal(&points, &face);
+        assert_eq!(normal, Vector3::new(0.0, 0.0, 1.0));
+    }
+    #[test]
+    fn test_face_matrix() {
+        let points = vec![
+            Point::new(1.0,  2.0,  3.0),
+            Point::new(10.0, 20.0, 30.0),
+            Point::new(100.0, 200.0, 300.0),
+        ];
+        let face = [0, 1, 2];
+        let matrix = face_matrix(&points, &face);
+        assert_eq!(matrix, Matrix3::new(
+            10.0, 100.0, 1.0,
+            20.0, 200.0, 2.0,
+            30.0, 300.0, 3.0,
+        ));
+    }
+    #[test]
+    fn test_get_intersection_of_flower() {
+        let points = vec![
+            Point::new( 0.0, 0.0, 3.0),
+            Point::new( 3.0, 0.0, 0.0),
+            Point::new( 3.0, 3.0, 3.0),
+            Point::new( 4.0, 4.0,-1.0),
+            Point::new(-1.0, 4.0, 4.0),
+            Point::new(-1.0,-1.0,-1.0),
+        ];
+        let flower = Flower::new(Face::new([0, 1, 2]), [3, 4, 5]);
+        let intersection = get_intersection_of_flower(&flower, &points);
+
+        assert!(intersection.distance(&Point::new(0.0, 3.0, 0.0)) < 1e-2);
+    }
 
     #[test]
     fn test_laplacian_smoothing() {

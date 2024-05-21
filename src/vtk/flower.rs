@@ -19,4 +19,19 @@ impl Flower {
             petal: [index[3], index[4], index[5]],
         }
     }
+    pub fn get(&self, i: usize) -> [usize; 3] {
+        let j: [usize; 2] = match i {
+            0 => [1, 2],
+            1 => [2, 0],
+            2 => [0, 1],
+            _ => [3, 3],
+        };
+        let i0 = self.bottom.get(j[0]);
+        let i1 = self.bottom.get(j[1]);
+        let i2 = self.petal[i];
+        [i0, i1, i2]
+    }
+    pub fn bottom(&self) -> [usize; 3] {
+        self.bottom.as_vec()
+    }
 }

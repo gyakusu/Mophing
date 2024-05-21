@@ -24,7 +24,7 @@ pub fn solve(a: Matrix3<f32>, b: Vector3<f32>) -> Vector3<f32> {
     Vector3::new(det_a0 / det_a, det_a1 / det_a, det_a2 / det_a)
 }
 
-pub fn get_normal_vector(points: &Vec<Point>) -> Vector3<f32> {
+pub fn get_normal_vector(points: &[Point; 3]) -> Vector3<f32> {
     let p0:Vector3<f32> = points[0].as_vec();
     let p1:Vector3<f32> = points[1].as_vec();
     let p2:Vector3<f32> = points[2].as_vec();

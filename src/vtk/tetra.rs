@@ -40,7 +40,7 @@ impl Tetra {
         let mut contain: [bool; 4] = [false; 4];
 
         for i in 0..4 {
-            contain[i] = face.as_i64().contains(&self.index[i]);
+            contain[i] = face.as_vec().contains(&self.index[i]);
         }
         let sum = contain.iter().fold(0, |sum, &b| sum + b as usize);
         let remain = contain.iter().position(|&b| !b).unwrap();
@@ -104,8 +104,8 @@ pub fn get_neighbor_map(tetras: &Vec<Tetra>) -> HashMap<usize, HashSet<usize>> {
 pub fn get_surface_map(surface_faces: &HashSet<Face>) -> HashMap<usize, HashSet<usize>> {
     let mut surface_map: HashMap<usize, HashSet<usize>> = HashMap::new();
     for face in surface_faces {
-        for &i in &face.as_i64() {
-            let neighbors: HashSet<usize> = face.as_i64().iter().cloned().filter(|&j| j != i).collect();
+        for &i in &face.as_vec() {
+            let neighbors: HashSet<usize> = face.as_vec().iter().cloned().filter(|&j| j != i).collect();
             surface_map.entry(i).or_insert_with(HashSet::new).extend(neighbors);
         }
     }
@@ -261,9 +261,7 @@ mod tests {
         let d0_len = inverse_map.get(&0).unwrap_or(&HashSet::new()).len();
         assert_eq!(d0_len, 8);
 
-        let hoge = inverse_map.get(&0).unwrap();
-
-        for h in hoge {
+        for h in inverse_map.get(&0).unwrap() {
             println!("{:?}", h);
         }
 

@@ -16,7 +16,7 @@ impl Face {
             index: sorted_index,
         }
     }
-    pub fn as_i64(&self) -> [usize; 3] {
+    pub fn as_vec(&self) -> [usize; 3] {
         self.index
     }
     pub fn get(&self, i: usize) -> usize {
@@ -59,20 +59,20 @@ mod tests {
     #[test]
     fn test_face_as_i64() {
         let face = Face::new([1, 2, 3]);
-        assert_eq!(face.as_i64(), [1, 2, 3]);
+        assert_eq!(face.as_vec(), [1, 2, 3]);
     }
     #[test]
     fn test_face_neighbor() {
         let face = Face::new([10, 20, 40]);
         let (remain0, new_face0) = face.neighbor(30, 0);
         assert_eq!(remain0, 10);
-        assert_eq!(new_face0.as_i64(), [20, 30, 40]);
+        assert_eq!(new_face0.as_vec(), [20, 30, 40]);
         let (remain1, new_face1) = face.neighbor(30, 1);
         assert_eq!(remain1, 20);
-        assert_eq!(new_face1.as_i64(), [10, 30, 40]);
+        assert_eq!(new_face1.as_vec(), [10, 30, 40]);
         let (remain2, new_face2) = face.neighbor(30, 2);
         assert_eq!(remain2, 40);
-        assert_eq!(new_face2.as_i64(), [10, 20, 30]);
+        assert_eq!(new_face2.as_vec(), [10, 20, 30]);
     }
 }
 

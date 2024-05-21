@@ -93,7 +93,7 @@ pub fn read_vtk(vtk_path: &str) -> Mesh {
     let points = read_point(vtk_path);
     let tetras = read_tetra(vtk_path);
 
-    let mesh = Mesh::new(&points, tetras);
+    let mesh = Mesh::new(&points, &tetras);
     mesh
 }
 pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
@@ -106,10 +106,10 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     let surface_map = read_map(setting_path, "surface_map").unwrap();
     let inverse_map = read_inverse_map(setting_path, "inverse_map").unwrap();
 
-    Mesh::load(&points, tetras, surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
+    Mesh::load(&points, &tetras, &surface_faces, &inner_index, &neighbor_map, &surface_map, &inverse_map)
 }
 
-pub fn write_setting(setting_path: &str, surface_faces: HashSet<Face>, inner_index: HashSet<usize>, neighbor_map: HashMap<usize, HashSet<usize>>, surface_map: HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
+pub fn write_setting(setting_path: &str, surface_faces: &HashSet<Face>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
     let file = File::create(setting_path)?;
     let mut writer = writer::EmitterConfig::new()
         .perform_indent(true)
@@ -120,7 +120,7 @@ pub fn write_setting(setting_path: &str, surface_faces: HashSet<Face>, inner_ind
     let _ = writer.write(writer::XmlEvent::start_element("surface_face"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
     for face in surface_faces {
-        let face_str = face.as_i64().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+        let face_str = face.as_vec().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
         let _ = writer.write(writer::XmlEvent::characters(&face_str));
         let _ = writer.write(writer::XmlEvent::characters("\n"));
     }
@@ -503,7 +503,7 @@ mod tests {
         // mesh.save();
         let(points, tetras, surface_faces, inner_index, neighbor_map, surface_map) = mesh.save();
         
-        _ = write_setting("data/Tetra_setting.xml", surface_faces.clone(), inner_index.clone(), neighbor_map.clone(), surface_map.clone());
+        _ = write_setting("data/Tetra_setting.xml", &surface_faces, &inner_index, &neighbor_map, &surface_map);
 
         let surface_faces0 = read_face("data/Tetra_setting.xml", "surface_face").unwrap();
         let inner_index0 = read_index("data/Tetra_setting.xml", "inner_index").unwrap();
@@ -511,13 +511,8 @@ mod tests {
         let surface_map0 = read_map("data/Tetra_setting.xml", "surface_map").unwrap();
         let inverse_map0 = read_inverse_map("data/Tetra_setting.xml", "inverse_map").unwrap();
 
-        let _ = Mesh::load(&points, tetras, surface_faces0.clone(), inner_index0.clone(), neighbor_map0.clone(), surface_map0.clone(), inverse_map0.clone());
+        let _ = Mesh::load(&points, &tetras, &surface_faces0, &inner_index0, &neighbor_map0, &surface_map0, &inverse_map0);
 
-        // assert_eq!(faces.clone().first(), faces0.clone().first());
-        // assert_eq!(faces.clone().last(), faces0.clone().last());
-
-        // assert_eq!(surface_faces.clone().first(), surface_faces0.clone().first());
-        // assert_eq!(surface_faces.clone().last(), surface_faces0.clone().last());
 
         assert_eq!(surface_faces.clone().len(), surface_faces0.clone().len());
 

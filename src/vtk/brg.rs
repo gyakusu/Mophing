@@ -153,16 +153,12 @@ impl Brg {
         let cage = CageParameter::sample();
         Brg::new(mesh, &cage)
     }
-    pub fn set_edge_and_face(&mut self, edges: HashMap<String, Vec<usize>>, faces: HashMap<String, HashSet<usize>>) {
-        for (name, index) in edges {
-            self.edges.insert(name, index);
-        }
-        for (name, index) in faces {
-            self.faces.insert(name, index);
-        }
+    pub fn set_edge_and_face(&mut self, edges: &HashMap<String, Vec<usize>>, faces: &HashMap<String, HashSet<usize>>) {
+        self.edges = edges.clone();
+        self.faces = faces.clone();
     }
-    pub fn set_periodic(&mut self, left: HashSet<usize>, right: HashSet<usize>) {
-        self.periodics = (left, right);
+    pub fn set_periodic(&mut self, left: &HashSet<usize>, right: &HashSet<usize>) {
+        self.periodics = (left.clone(), right.clone());
     }
     pub fn get_points(&self) -> Vec<Point> {
         self.mesh.points.clone()
@@ -618,7 +614,7 @@ mod tests {
         let mut brg = Brg::new(&mesh, &cage);
         let edges = io::read_edge_from_xml("data/face_and_edge_index.xml", "edge").unwrap();
         let faces = io::read_index_from_xml("data/face_and_edge_index.xml", "face").unwrap();    
-        brg.set_edge_and_face(edges, faces);
+        brg.set_edge_and_face(&edges, &faces);
 
         brg.linspace_all(); // ２つ以上の重複定義で，それらが乖離していたらpanicする．
         assert!(true); // panicしなければOK
