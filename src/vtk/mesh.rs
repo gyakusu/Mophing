@@ -32,7 +32,7 @@ impl Mesh {
         let surface_map: HashMap<usize, HashSet<usize>> = get_surface_map(&surface_faces);
         let inverse_map: HashMap<usize, HashSet<Flower>> = make_inverse_map(&tetras, &inner_index, &face_map);
 
-        Self::load(points, tetras,  surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
+        Self::load(points, tetras, surface_faces, inner_index, neighbor_map, surface_map, inverse_map)
     }
 
     pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, HashSet<Face>, HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {

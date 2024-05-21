@@ -39,12 +39,12 @@ pub fn sort_three_numbers(v: [usize; 3]) -> [usize; 3] {
     let b = v[1];
     let c = v[2];
     match (a < b, b < c, a < c) {
-        (true, true, _) => [a, b, c],
-        (true, false, true) => [a, c, b],
-        (true, false, false) => [c, a, b],
-        (false, true, true) => [b, a, c],
-        (false, true, false) => [b, c, a],
-        (false, false, true) => [b, c, a],
+        (true, true, _)       => [a, b, c],
+        (true, false, true)   => [a, c, b],
+        (true, false, false)  => [c, a, b],
+        (false, true, true)   => [b, a, c],
+        (false, true, false)  => [b, c, a],
+        (false, false, true)  => [b, c, a],
         (false, false, false) => [c, b, a],
     }
 }

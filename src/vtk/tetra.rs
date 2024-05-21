@@ -21,21 +21,20 @@ impl Tetra {
             index: sorted_index,
         })
     }
-    pub fn remain_face(&self, i: usize) -> Face {
+    pub fn remain_face(&self, i: usize) -> (usize, Face) {
         #[cfg(debug_assertions)] {
             if i > 3 {
                 panic!("Index out of bounds: {}", i);
             }
         }
-        let j: [usize; 3];
-        j = match i {
+        let j: [usize; 3] = match i {
             0 => [1, 2, 3],
             1 => [0, 2, 3],
             2 => [0, 1, 3],
             3 => [0, 1, 2],
             _ => [4, 4, 4],
         };
-        Face::new([self.index[j[0]], self.index[j[1]], self.index[j[2]]])
+        (self.index[i], Face::new([self.index[j[0]], self.index[j[1]], self.index[j[2]]]))
     }
     pub fn contain_and_remain(&self, face: &Face) -> (bool, usize) {
         let mut contain: [bool; 4] = [false; 4];
@@ -54,8 +53,7 @@ pub fn tetras_to_face_map(tetras: &Vec<Tetra>) -> HashMap<Face, HashSet<usize>> 
 
     for tetra in tetras {
         for i in 0..4 {
-            let face = tetra.remain_face(i);
-            let remain = tetra.index[i];
+            let (remain, face) = tetra.remain_face(i);
             if face_map.contains_key(&face) {
                 face_map.get_mut(&face).unwrap().insert(remain);
             } else {
@@ -130,6 +128,23 @@ pub fn get_neighbors(neighbor_map: &HashMap<usize, HashSet<usize>>, i: usize) ->
 pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Flower>> {
     let mut inverse_map: HashMap<usize, HashSet<Flower>> = HashMap::new();
 
+    for tetra in tetras {
+        for i in 0..4 {
+            let (remain, face) = tetra.remain_face(i);
+            if !inner_index.contains(&remain) {
+                continue;
+            }
+            let mut petal: [usize; 3] = [0; 3];
+            for j in 0..3 {
+                let (r0, f0) = face.neighbor(remain, j);
+                let remains = face_map.get(&f0).unwrap();
+                let another = remains.iter().cloned().find(|&r| r != r0).unwrap();
+                petal[j] = another;
+            }
+            let flower = Flower::new(face, petal);
+            inverse_map.entry(remain).or_insert_with(HashSet::new).insert(flower);
+        }
+    }
     inverse_map
 }
 
@@ -244,7 +259,13 @@ mod tests {
         let inverse_map = make_inverse_map(&tetras, &inner_index, &face_map);
 
         let d0_len = inverse_map.get(&0).unwrap_or(&HashSet::new()).len();
-        assert_eq!(d0_len, 12);
+        assert_eq!(d0_len, 8);
+
+        let hoge = inverse_map.get(&0).unwrap();
+
+        for h in hoge {
+            println!("{:?}", h);
+        }
 
         let d1_len = inverse_map.get(&1).unwrap_or(&HashSet::new()).len();
         assert_eq!(d1_len, 0);
