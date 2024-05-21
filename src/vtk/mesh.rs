@@ -15,10 +15,10 @@ pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
     pub surface_faces: HashSet<Face>,
-    pub inner_index: HashSet<usize>,
+    pub inner_index:  HashSet<usize>,
     pub neighbor_map: HashMap<usize, HashSet<usize>>,
-    pub surface_map: HashMap<usize, HashSet<usize>>,
-    pub inverse_map: HashMap<usize, HashSet<Flower>>,
+    pub surface_map:  HashMap<usize, HashSet<usize>>,
+    pub inverse_map:  HashMap<usize, HashSet<Flower>>,
 }
 
 impl Mesh {
