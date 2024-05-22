@@ -31,6 +31,12 @@ fn main() {
 
     let mesh = io::read_vtk(origin_path);
 
+    println!("points: {:?}", mesh.points.len());
+    println!("tetras: {:?}", mesh.tetras.len());
+    println!("inner_index: {:?}", mesh.inner_index.len());
+    println!("inverse_map: {:?}", mesh.inverse_map.len());
+
+
     let param = CageParameter {
         axis: Vector3::new(0.0, 0.0, 1.0),
         theta0: -PI / 6.0,
@@ -98,8 +104,7 @@ fn main() {
     });
 
     smooth_and_check_quality(&mut brg, iteration2, |brg| {
-        brg.smooth_ball_with_cotangent();
-        // brg.smooth_inner_with_cotangent();
+        brg.smooth_inner_with_flower();
     });
 
     io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());

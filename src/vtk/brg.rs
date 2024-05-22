@@ -560,6 +560,9 @@ impl Brg {
     pub fn smooth_inner_with_cotangent(&mut self) {
         self.mesh.smooth_inner_with_cotangent();
     }
+    pub fn smooth_inner_with_flower(&mut self) {
+        self.mesh.smooth_inner_with_flower();
+    }
 }
 
 #[cfg(test)]

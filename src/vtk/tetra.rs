@@ -125,6 +125,24 @@ pub fn get_neighbors(neighbor_map: &HashMap<usize, HashSet<usize>>, i: usize) ->
         neighbor_map.get(&i).unwrap()
     }
 }
+fn get_another(remains: &HashSet<usize>, r0: usize) -> usize {
+    if remains.len() != 2 {
+        panic!("Remains must have a length of 2");
+    }
+    let r0_count = remains.iter().filter(|&x| x == &r0).count();
+    if r0_count == 0 {
+        panic!("Remains must contain r0");
+    }
+    if r0_count == 2 {
+        panic!("Remains must contain only one r0");
+    }
+    for r in remains {
+        if r != &r0 {
+            return *r;
+        }
+    }
+    panic!("Key not found");
+}
 pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Flower>> {
     let mut inverse_map: HashMap<usize, HashSet<Flower>> = HashMap::new();
 
@@ -138,7 +156,7 @@ pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_
             for j in 0..3 {
                 let (r0, f0) = face.neighbor(remain, j);
                 let remains = face_map.get(&f0).unwrap();
-                let another = remains.iter().cloned().find(|&r| r != r0).unwrap();
+                let another = get_another(&remains, r0);
                 petal[j] = another;
             }
             let flower = Flower::new(face, petal);
@@ -147,7 +165,6 @@ pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_
     }
     inverse_map
 }
-
 
 #[cfg(test)]
 mod tests {
