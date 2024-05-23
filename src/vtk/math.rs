@@ -9,7 +9,7 @@ use super::point::Point;
 pub fn try_solve(a: Matrix3<f32>, b: Vector3<f32>) -> Result<Vector3<f32>, &'static str> {
     let det_a = a.determinant();
 
-    if det_a.abs() < 1e-2 {
+    if det_a.abs() < 1e-6 {
         return Err("The matrix is singular and cannot be solved using Cramer's rule.");
     }
     fn get_matrix(a: Matrix3<f32>, b: Vector3<f32>, i: usize) -> f32 {

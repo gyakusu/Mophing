@@ -5,6 +5,7 @@ use super::face::Face;
 pub struct Flower {
     bottom: Face, // 花の底面のインデックス
     petal: [usize; 3],  // 花びら3枚のインデックス
+    
 }
 impl Flower {
     pub fn new(bottom: Face, petal: [usize; 3]) -> Self {

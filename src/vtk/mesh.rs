@@ -24,25 +24,38 @@ fn face_matrix(points: &Vec<Point>, face: &[usize; 3]) -> Matrix3<f32> {
     c.set_row(2, &points[face[0]].as_vec().transpose());
     c
 }
-fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<f32> {
+fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Result<Matrix3<f32>, &'static str> {
 
     let mut a: Matrix3<f32> = Matrix3::zeros();
 
-    let v0: Vector3<f32> = face_normal(&points, &flower.bottom());
+    let v: Vector3<f32> = face_normal(&points, &flower.bottom());
     for i in 0..3 {
-        let v1: Vector3<f32> = face_normal(&points, &flower.get(i));
-        let bisector: Vector3<f32> = v1 + v0;
-        a.set_row(i, &bisector.transpose());
+        let f0 = flower.get(i);
+        let v1: Vector3<f32> = face_normal(&points, &f0);
+
+        let bisector: Vector3<f32> = v1 + v;
+        let bisector_norm = bisector.norm();
+        if bisector_norm < 1e-3 {
+            return Err("The flower must not be parareled.");
+        }
+        a.set_row(i, &(bisector / bisector_norm).transpose());
     }
-    return a
+    Ok(a)
 }
 pub fn intersect_flower(flower: &Flower, points: &Vec<Point>) -> Result<Point, &'static str> {
-    let a: Matrix3<f32> = angular_bisector_matrix(flower, points);
+    let try_a: Result<Matrix3<f32>, &'static str> = angular_bisector_matrix(flower, points);
+    let a: Matrix3<f32> = match try_a {
+        Ok(a) => a,
+        Err(e) => return Err(e),
+    };
     let c: Matrix3<f32> = face_matrix(points, &flower.bottom());
     let b: Vector3<f32> = a.component_mul(&c).column_sum();
-    
-    match try_solve(a, b) {
-        Ok(answer) => Ok(Point::from_vec(answer)),
+
+    let d: Result<Vector3<f32>, &'static str> = try_solve(a, b);
+    match d {
+        Ok(answer) => {
+            Ok(Point::from_vec(answer))
+        },
         Err(_) => Err("The matrix is singular and cannot be solved using Cramer's rule."),
     }
 }
@@ -52,14 +65,22 @@ pub fn flower_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, inver
     for &i in inner_index {
         let flowers = inverse_map.get(&i).unwrap();
         let mut sum = Vector3::zeros();
+        let mut waight = 0.0;
         for flower in flowers {
             let intersection = intersect_flower(&flower, &points);
-            sum += match intersection {
-                Ok(point) => point.as_vec(),
-                Err(_) => points[i].as_vec(),
-            };
+            match intersection {
+                Ok(p) => {
+                    sum += p.as_vec();
+                    waight += 1.0;
+                },
+                Err(_) => {
+                },
+            }
         }
-        new_points[i] = Point::from_vec(sum / flowers.len() as f32);
+        if waight < 1e-1 {
+            continue;
+        }
+        new_points[i] = Point::from_vec(sum / waight);
     }
     new_points
 }
@@ -304,8 +325,9 @@ mod tests {
         ];
         let flower = Flower::new(Face::new([0, 1, 2]), [3, 4, 5]);
         let intersection = intersect_flower(&flower, &points).unwrap();
+        let p = intersection;
 
-        assert!(intersection.distance(&Point::new(0.0, 3.0, 0.0)) < 1e-2);
+        assert!(p.distance(&Point::new(0.0, 3.0, 0.0)) < 1e-2);
     }
     #[test]
     fn test_flower_smoothing() {
