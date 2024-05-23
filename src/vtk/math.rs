@@ -34,18 +34,20 @@ pub fn get_normal_vector(points: &[Point; 3]) -> Vector3<f32> {
     let norm = normal.norm();
     normal / norm
 }
-pub fn sort_three_numbers(v: [usize; 3]) -> [usize; 3] {
+pub fn sort_three_numbers(v: [usize; 3]) -> ([usize; 3], bool) {
     let a = v[0];
     let b = v[1];
     let c = v[2];
+
     match (a < b, b < c, a < c) {
-        (true, true, _)       => [a, b, c],
-        (true, false, true)   => [a, c, b],
-        (true, false, false)  => [c, a, b],
-        (false, true, true)   => [b, a, c],
-        (false, true, false)  => [b, c, a],
-        (false, false, true)  => [b, c, a],
-        (false, false, false) => [c, b, a],
+        (true, true, true)    => ([a, b, c], true),
+        (true, true, false)   => ([a, b, c], true),
+        (true, false, true)   => ([a, c, b], false),
+        (true, false, false)  => ([c, a, b], true),
+        (false, true, true)   => ([b, a, c], false),
+        (false, true, false)  => ([b, c, a], true),
+        (false, false, true)  => ([b, c, a], true),
+        (false, false, false) => ([c, b, a], false),
     }
 }
 
@@ -67,11 +69,11 @@ mod tests {
     }
     #[test]
     fn test_face_sort_three_numbers() {
-        assert_eq!(sort_three_numbers([1, 2, 3]), [1, 2, 3]);
-        assert_eq!(sort_three_numbers([1, 3, 2]), [1, 2, 3]);
-        assert_eq!(sort_three_numbers([2, 1, 3]), [1, 2, 3]);
-        assert_eq!(sort_three_numbers([2, 3, 1]), [1, 2, 3]);
-        assert_eq!(sort_three_numbers([3, 1, 2]), [1, 2, 3]);
-        assert_eq!(sort_three_numbers([3, 2, 1]), [1, 2, 3]);
+        assert_eq!(sort_three_numbers([10, 20, 30]), ([10, 20, 30], true));
+        assert_eq!(sort_three_numbers([10, 30, 20]), ([10, 20, 30], false));
+        assert_eq!(sort_three_numbers([20, 10, 30]), ([10, 20, 30], false));
+        assert_eq!(sort_three_numbers([20, 30, 10]), ([10, 20, 30], true));
+        assert_eq!(sort_three_numbers([30, 10, 20]), ([10, 20, 30], true));
+        assert_eq!(sort_three_numbers([30, 20, 10]), ([10, 20, 30], false));
     }
 }

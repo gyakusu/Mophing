@@ -268,13 +268,13 @@ mod tests {
 
     const TETRAS0 : [Tetra; 8] = [
         Tetra { index: [0, 1, 3, 5] },
-        Tetra { index: [0, 1, 3, 6] },
-        Tetra { index: [0, 1, 4, 5] },
-        Tetra { index: [0, 1, 4, 6] },
-        Tetra { index: [0, 2, 3, 5] },
-        Tetra { index: [0, 2, 3, 6] },
+        Tetra { index: [0, 3, 2, 5] },
         Tetra { index: [0, 2, 4, 5] },
-        Tetra { index: [0, 2, 4, 6] },
+        Tetra { index: [0, 4, 1, 5] },
+        Tetra { index: [0, 1, 4, 6] },
+        Tetra { index: [0, 4, 2, 6] },
+        Tetra { index: [0, 2, 3, 6] },
+        Tetra { index: [0, 3, 1, 6] },
     ];
     const POINTS0 : [Vector3<f32>; 7] = [
         Vector3::new( 0.0, 0.0, 0.0),
@@ -323,7 +323,7 @@ mod tests {
             Point::new(-1.0, 4.0, 4.0),
             Point::new(-1.0,-1.0,-1.0),
         ];
-        let flower = Flower::new(Face::new([0, 1, 2]), [3, 4, 5]);
+        let flower = Flower::from_vec([0, 1, 2, 3, 4, 5]);
         let intersection = intersect_flower(&flower, &points).unwrap();
         let p = intersection;
 

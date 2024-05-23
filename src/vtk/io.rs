@@ -178,7 +178,7 @@ pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<Fa
             }
             Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
                 while current_face.len() >= 3 {
-                    let face = Face::new([current_face[0], current_face[1], current_face[2]]);
+                    let (face, _) = Face::new([current_face[0], current_face[1], current_face[2]]);
                     faces.insert(face);
                     current_face.drain(0..3);
                 }

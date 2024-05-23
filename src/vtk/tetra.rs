@@ -14,14 +14,12 @@ impl Tetra {
     pub fn new(index: [usize; 4]) -> Result<Self, &'static str> {
         if index.len() != 4 {
             return Err("index must have a length of 4");
-        }        
-        let mut sorted_index = index;
-        sorted_index.sort();
+        }
         Ok(Self {
-            index: sorted_index,
+            index,
         })
     }
-    pub fn remain_face(&self, i: usize) -> (usize, Face) {
+    pub fn remain_face(&self, i: usize) -> (usize, Face, bool) {
         #[cfg(debug_assertions)] {
             if i > 3 {
                 panic!("Index out of bounds: {}", i);
@@ -29,12 +27,13 @@ impl Tetra {
         }
         let j: [usize; 3] = match i {
             0 => [1, 2, 3],
-            1 => [0, 2, 3],
-            2 => [0, 1, 3],
-            3 => [0, 1, 2],
+            1 => [2, 0, 3],
+            2 => [3, 0, 1],
+            3 => [0, 2, 1],
             _ => [4, 4, 4],
         };
-        (self.index[i], Face::new([self.index[j[0]], self.index[j[1]], self.index[j[2]]]))
+        let (face, is_front) = Face::new([self.index[j[0]], self.index[j[1]], self.index[j[2]]]);
+        (self.index[i], face, is_front)
     }
     pub fn contain_and_remain(&self, face: &Face) -> (bool, usize) {
         let mut contain: [bool; 4] = [false; 4];
@@ -48,22 +47,22 @@ impl Tetra {
     }
 }
 
-pub fn tetras_to_face_map(tetras: &Vec<Tetra>) -> HashMap<Face, HashSet<usize>> {
-    let mut face_map: HashMap<Face, HashSet<usize>> = HashMap::new();
+pub fn tetras_to_face_map(tetras: &Vec<Tetra>) -> HashMap<Face, HashSet<(usize, bool)>> {
+    let mut face_map: HashMap<Face, HashSet<(usize, bool)>> = HashMap::new();
 
     for tetra in tetras {
         for i in 0..4 {
-            let (remain, face) = tetra.remain_face(i);
+            let (remain, face, is_front) = tetra.remain_face(i);
             if face_map.contains_key(&face) {
-                face_map.get_mut(&face).unwrap().insert(remain);
+                face_map.get_mut(&face).unwrap().insert((remain, is_front));
             } else {
-                face_map.insert(face, [remain].iter().cloned().collect());
+                face_map.insert(face, [(remain, is_front)].iter().cloned().collect());
             }
         }
     }
     face_map
 }
-pub fn find_surface_faces(face_map: &HashMap<Face, HashSet<usize>>) -> HashSet<Face> {
+pub fn find_surface_faces(face_map: &HashMap<Face, HashSet<(usize, bool)>>) -> HashSet<Face> {
     let mut surface_faces: HashSet<Face> = HashSet::new();
     for (face, remains) in face_map {
         if remains.len() == 1 {
@@ -72,7 +71,7 @@ pub fn find_surface_faces(face_map: &HashMap<Face, HashSet<usize>>) -> HashSet<F
     }
     surface_faces
 }
-pub fn find_inner_index(face_map: &HashMap<Face, HashSet<usize>>, surface_faces: &HashSet<Face>) -> HashSet<usize> {
+pub fn find_inner_index(face_map: &HashMap<Face, HashSet<(usize, bool)>>, surface_faces: &HashSet<Face>) -> HashSet<usize> {
 
     let mut inner_index: HashSet<usize> = HashSet::new();
     for (face, _) in face_map {
@@ -125,30 +124,34 @@ pub fn get_neighbors(neighbor_map: &HashMap<usize, HashSet<usize>>, i: usize) ->
         neighbor_map.get(&i).unwrap()
     }
 }
-fn get_another(remains: &HashSet<usize>, r0: usize) -> usize {
+fn get_another(remains: &HashSet<(usize, bool)>, r0: usize) -> usize {
     if remains.len() != 2 {
         panic!("Remains must have a length of 2");
     }
-    let r0_count = remains.iter().filter(|&x| x == &r0).count();
+    let r0_count = remains.iter().filter(|&x| x.0 == r0).count();
     if r0_count == 0 {
         panic!("Remains must contain r0");
     }
     if r0_count == 2 {
         panic!("Remains must contain only one r0");
     }
+    let num_front = remains.iter().filter(|&x| x.1).count();
+    if num_front != 1 {
+        panic!("Remains must contain same front. num_front: {}", num_front);
+    }
     for r in remains {
-        if r != &r0 {
-            return *r;
+        if r.0 != r0 {
+            return r.0;
         }
     }
     panic!("Key not found");
 }
-pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<usize>>) -> HashMap<usize, HashSet<Flower>> {
+pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_map: &HashMap<Face, HashSet<(usize, bool)>>) -> HashMap<usize, HashSet<Flower>> {
     let mut inverse_map: HashMap<usize, HashSet<Flower>> = HashMap::new();
 
     for tetra in tetras {
         for i in 0..4 {
-            let (remain, face) = tetra.remain_face(i);
+            let (remain, face, is_front) = tetra.remain_face(i);
             if !inner_index.contains(&remain) {
                 continue;
             }
@@ -156,10 +159,10 @@ pub fn make_inverse_map(tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, face_
             for j in 0..3 {
                 let (r0, f0) = face.neighbor(remain, j);
                 let remains = face_map.get(&f0).unwrap();
-                let another = get_another(&remains, r0);
+                let another = get_another(remains, r0);
                 petal[j] = another;
             }
-            let flower = Flower::new(face, petal);
+            let flower = Flower::new(face, petal, is_front);
             inverse_map.entry(remain).or_insert_with(HashSet::new).insert(flower);
         }
     }
@@ -172,29 +175,29 @@ mod tests {
 
     const TETRAS0 : [Tetra; 4] = [
         Tetra { index: [0, 1, 2, 3] },
-        Tetra { index: [0, 1, 2, 4] },
         Tetra { index: [0, 1, 3, 4] },
-        Tetra { index: [0, 2, 3, 4] },
+        Tetra { index: [0, 1, 4, 2] },
+        Tetra { index: [0, 2, 4, 3] },
     ];
     const TETRAS1 : [Tetra; 8] = [
         Tetra { index: [0, 1, 3, 5] },
-        Tetra { index: [0, 1, 3, 6] },
-        Tetra { index: [0, 1, 4, 5] },
-        Tetra { index: [0, 1, 4, 6] },
-        Tetra { index: [0, 2, 3, 5] },
-        Tetra { index: [0, 2, 3, 6] },
+        Tetra { index: [0, 3, 2, 5] },
         Tetra { index: [0, 2, 4, 5] },
-        Tetra { index: [0, 2, 4, 6] },
+        Tetra { index: [0, 4, 1, 5] },
+        Tetra { index: [0, 1, 4, 6] },
+        Tetra { index: [0, 4, 2, 6] },
+        Tetra { index: [0, 2, 3, 6] },
+        Tetra { index: [0, 3, 1, 6] },
     ];
     #[test]
     fn test_contain_and_remain() {
         let tetra = Tetra::new([0, 10, 20, 30]).unwrap();
-        let face0 = Face::new([0, 10, 20]);
+        let (face0, _) = Face::new([0, 10, 20]);
         let (contain0, remain0) = tetra.contain_and_remain(&face0);
         assert_eq!(contain0, true);
         assert_eq!(remain0, 30);
 
-        let face1 = Face::new([0, 10, 40]);
+        let (face1, _) = Face::new([0, 10, 40]);
         let (contain1, remain1) = tetra.contain_and_remain(&face1);
         assert_eq!(contain1, false);
         assert!(remain1 > usize::MIN);
@@ -203,22 +206,22 @@ mod tests {
     fn test_tetras_to_face_map() {
         let tetras = TETRAS0.to_vec();
         let face_map = tetras_to_face_map(&tetras);
-        let remain0 = face_map.get(&Face::new([0, 1, 2])).unwrap();
-        assert!(remain0.contains(&3));
-        assert!(remain0.contains(&4));
+        let remain0 = face_map.get(&Face::new([0, 1, 2]).0).unwrap();
+        assert!(remain0.contains(&(3, false)));
+        assert!(remain0.contains(&(4, true)));
 
-        let remain1 = face_map.get(&Face::new([1, 2, 3])).unwrap();
-        assert!(remain1.contains(&0));
+        let remain1 = face_map.get(&Face::new([1, 2, 3]).0).unwrap();
+        assert!(remain1.contains(&(0, true)));
     }
     #[test]
     fn test_surface_faces() {
         let tetras = TETRAS0.to_vec();
         let face_map = tetras_to_face_map(&tetras);
         let surface_faces = find_surface_faces(&face_map);
-        assert!(surface_faces.contains(&Face::new([1, 2, 3])));
-        assert!(surface_faces.contains(&Face::new([1, 2, 4])));
-        assert!(surface_faces.contains(&Face::new([1, 3, 4])));
-        assert!(surface_faces.contains(&Face::new([2, 3, 4])));
+        assert!(surface_faces.contains(&Face::new([1, 2, 3]).0));
+        assert!(surface_faces.contains(&Face::new([1, 2, 4]).0));
+        assert!(surface_faces.contains(&Face::new([1, 3, 4]).0));
+        assert!(surface_faces.contains(&Face::new([2, 3, 4]).0));
     }
     #[test]
     fn test_find_inner_index() {
