@@ -43,4 +43,7 @@ impl Flower {
     pub fn bottom(&self) -> [usize; 3] {
         self.bottom.as_vec()
     }
+    pub fn flip(&self) -> f32 {
+        if self.is_front { 1.0 } else { -1.0 }
+    }
 }

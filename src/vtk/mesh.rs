@@ -24,29 +24,76 @@ fn face_matrix(points: &Vec<Point>, face: &[usize; 3]) -> Matrix3<f32> {
     c.set_row(2, &points[face[0]].as_vec().transpose());
     c
 }
-fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Result<Matrix3<f32>, &'static str> {
+fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<f32> {
+    let v: Vector3<f32> = face_normal(&points, &flower.bottom());
 
     let mut a: Matrix3<f32> = Matrix3::zeros();
-
-    let v: Vector3<f32> = face_normal(&points, &flower.bottom());
     for i in 0..3 {
         let f0 = flower.get(i);
         let v1: Vector3<f32> = face_normal(&points, &f0);
 
         let bisector: Vector3<f32> = v1 + v;
         let bisector_norm = bisector.norm();
-        if bisector_norm < 1e-3 {
-            return Err("The flower must not be parareled.");
+
+        let b: Vector3<f32> =  if bisector_norm < 1e-3 {
+            let v2: Vector3<f32> = points[f0[1]].as_vec() - points[f0[0]].as_vec();
+            let v3: Vector3<f32> = v.cross(&v2).normalize();
+            v3
         }
-        a.set_row(i, &(bisector / bisector_norm).transpose());
+        else {
+            let distance = v.dot(&(points[f0[0]].as_vec() - points[f0[2]].as_vec()));
+            let distance_fliped = distance * flower.flip();
+    
+            let is_flip = if distance_fliped > 0.0 {1.0} else {-1.0};
+            bisector / bisector_norm * is_flip
+        };
+        a.set_row(i, &b.transpose());     
     }
-    Ok(a)
+    a
 }
-pub fn intersect_flower(flower: &Flower, points: &Vec<Point>) -> Result<Point, &'static str> {
-    let try_a: Result<Matrix3<f32>, &'static str> = angular_bisector_matrix(flower, points);
-    let a: Matrix3<f32> = match try_a {
-        Ok(a) => a,
-        Err(e) => return Err(e),
+fn angular_quadrisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<f32> {
+    let v: Vector3<f32> = face_normal(&points, &flower.bottom());
+
+    let mut a: Matrix3<f32> = Matrix3::zeros();
+    for i in 0..3 {
+        let f0 = flower.get(i);
+        let v1: Vector3<f32> = face_normal(&points, &f0);
+
+        let distance = v.dot(&(points[f0[0]].as_vec() - points[f0[2]].as_vec()));
+        let distance_fliped = distance * flower.flip();
+        let is_flip = if distance_fliped > 0.0 {1.0} else {-1.0};
+        let v2: Vector3<f32> = points[f0[1]].as_vec() - points[f0[0]].as_vec();
+        let v3: Vector3<f32> = v.cross(&v2).normalize();
+
+        let bisector: Vector3<f32> = v1 + v;
+        let bisector_norm = bisector.norm();
+
+        let b: Vector3<f32> =  if bisector_norm < 1e-3 {
+            v3
+        }
+        else {
+            bisector / bisector_norm * is_flip
+        }; 
+        let bisector: Vector3<f32> = b + v;
+        let bisector_norm = bisector.norm();
+
+        let b: Vector3<f32> =  if bisector_norm < 1e-3 {
+            v3
+        }
+        else {
+            bisector / bisector_norm * is_flip
+        };
+        a.set_row(i, &b.transpose());
+    }
+    a
+}
+pub fn intersect_flower(flower: &Flower, points: &Vec<Point>, use_quad: bool) -> Result<Point, &'static str> {
+
+    let a: Matrix3<f32> = if use_quad { 
+        angular_quadrisector_matrix(flower, points)
+    }
+    else {
+        angular_bisector_matrix(flower, points)
     };
     let c: Matrix3<f32> = face_matrix(points, &flower.bottom());
     let b: Vector3<f32> = a.component_mul(&c).column_sum();
@@ -67,7 +114,7 @@ pub fn flower_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, inver
         let mut sum = Vector3::zeros();
         let mut waight = 0.0;
         for flower in flowers {
-            let intersection = intersect_flower(&flower, &points);
+            let intersection = intersect_flower(&flower, &points, true);
             match intersection {
                 Ok(p) => {
                     sum += p.as_vec();
@@ -324,7 +371,7 @@ mod tests {
             Point::new(-1.0,-1.0,-1.0),
         ];
         let flower = Flower::from_vec([0, 1, 2, 3, 4, 5]);
-        let intersection = intersect_flower(&flower, &points).unwrap();
+        let intersection = intersect_flower(&flower, &points, false).unwrap();
         let p = intersection;
 
         assert!(p.distance(&Point::new(0.0, 3.0, 0.0)) < 1e-2);
