@@ -83,6 +83,16 @@ fn angular_quadrisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<
         else {
             bisector / bisector_norm * is_flip
         };
+
+        let bisector: Vector3<f32> = b + v;
+        let bisector_norm = bisector.norm();
+
+        let b: Vector3<f32> =  if bisector_norm < 1e-3 {
+            v3
+        }
+        else {
+            bisector / bisector_norm * is_flip
+        };
         a.set_row(i, &b.transpose());
     }
     a
