@@ -205,10 +205,9 @@ pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_inde
         else { panic!("The tetra is on the surface! Can't flip it!");};
         print!("{:?}", i);
         let height = volume * 3.0 / area[i]; // < 0
-        let normal: Vector3<f32> = unit_normal(&new_points, &tetra, i);
         let length = f32::max(height * (-1.0 - ratio), 1e-6);
-        let flip: Vector3<f32> = normal * length;
-        new_points[t[i]] = new_points[t[i]].add(flip);
+        let normal: Vector3<f32> = unit_normal(&new_points, &tetra, i);
+        new_points[t[i]] = new_points[t[i]].add(normal * length);
     }
     println!("");
     new_points
