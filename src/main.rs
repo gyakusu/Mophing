@@ -78,6 +78,7 @@ fn main() {
     let iteration0 = arg_usize(0);
     let iteration1 = arg_usize(1);
     let iteration2 = arg_usize(2);
+    let iteration3 = arg_usize(3);
     
     fn smooth_and_check_quality(brg: &mut Brg, iteration: usize, smooth_fn: impl Fn(&mut Brg)) {
         for i in 0..iteration {
@@ -103,12 +104,26 @@ fn main() {
         brg.smooth_inner();
     });
 
-    smooth_and_check_quality(&mut brg, iteration2, |brg| {
-        brg.smooth_inner_with_flower();
-    });
+    let scale = brg.std();
+    println!("scale: {:?}", scale);
 
+    println!("flip negative volume start");
+    for _ in 0..iteration2 {
+        brg.scale(1.0/scale);
+        brg.flip_negative_volume(0.1);
+
+        brg.scale(scale);
+        brg.normalize_center();
+    }
+    println!("flip negative volume only sphire start");
+    for _ in 0..iteration3 {
+        brg.scale(1.0/scale);
+        brg.flip_negative_volume_only_sphire(2.0);
+
+        brg.scale(scale);
+        brg.normalize_center();
+    }
     io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());
-
 }
 
 

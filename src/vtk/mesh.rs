@@ -1,6 +1,8 @@
+use core::panic;
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::result::Result;
+use std::vec;
 extern crate nalgebra as na;
 use na::Vector3;
 use na::Matrix3;
@@ -23,6 +25,49 @@ fn face_matrix(points: &Vec<Point>, face: &[usize; 3]) -> Matrix3<f32> {
     c.set_row(1, &points[face[2]].as_vec().transpose());
     c.set_row(2, &points[face[0]].as_vec().transpose());
     c
+}
+fn tetra_volume(points: &Vec<Point>, tetra: &Tetra) -> f32 {
+    let t = tetra.index;
+    let a: Vector3<f32> = points[t[1]].as_vec() - points[t[0]].as_vec();
+    let b: Vector3<f32> = points[t[2]].as_vec() - points[t[0]].as_vec();
+    let c: Vector3<f32> = points[t[3]].as_vec() - points[t[0]].as_vec();
+    let volume = a.dot(&b.cross(&c)) / 6.0;
+    volume
+}
+fn tetra_area(points: &Vec<Point>, tetra: &Tetra) -> Vec<f32> {
+    let t = tetra.index;
+    let a: Vector3<f32> = points[t[0]].as_vec();
+    let b: Vector3<f32> = points[t[1]].as_vec();
+    let c: Vector3<f32> = points[t[2]].as_vec();
+    let d: Vector3<f32> = points[t[3]].as_vec();
+
+    let area = vec![
+        (d - b).cross(&(c - b)).norm() / 2.0,
+        (d - c).cross(&(a - c)).norm() / 2.0,
+        (d - a).cross(&(b - a)).norm() / 2.0,
+        (c - b).cross(&(a - b)).norm() / 2.0,
+    ];
+    area
+}
+fn sort_vec_index(v: &Vec<f32>) -> Vec<usize> {
+    let mut array: [usize; 4] = [0, 1, 2, 3];
+    array.sort_by(|&a, &b| v[a].partial_cmp(&v[b]).unwrap());
+    array.to_vec()
+}
+fn unit_normal(points: &Vec<Point>, tetra: &Tetra, i: usize) -> Vector3<f32> {
+    let t = tetra.index;
+    let a: Vector3<f32> = points[t[1]].as_vec() - points[t[0]].as_vec();
+    let b: Vector3<f32> = points[t[2]].as_vec() - points[t[1]].as_vec();
+    let c: Vector3<f32> = points[t[3]].as_vec() - points[t[2]].as_vec();
+    let d: Vector3<f32> = points[t[0]].as_vec() - points[t[3]].as_vec();
+    let normal = match i {
+        0 => c.cross(&b),
+        1 => c.cross(&d),
+        2 => a.cross(&d),
+        3 => a.cross(&b),
+        _ => Vector3::zeros(),
+    };
+    normal.normalize()
 }
 fn angular_bisector_matrix(flower: &Flower, points: &Vec<Point>) -> Matrix3<f32> {
     let v: Vector3<f32> = face_normal(&points, &flower.bottom());
@@ -141,6 +186,33 @@ pub fn flower_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, inver
     }
     new_points
 }
+pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) -> Vec<Point> {
+    let mut new_points = points.clone();
+
+    for tetra in tetras {
+        let volume = tetra_volume(&new_points, &tetra);
+        if volume > 0.0 {
+            continue;
+        }
+        let t = tetra.index;
+        let area = tetra_area(&new_points, &tetra);
+        // let index = sort_vec_index(&area);
+        let index = if use_sort { sort_vec_index(&area) } else { [0, 1, 2, 3].to_vec() };
+        let i = if inner_index.contains(&t[index[0]]) { index[0] }
+        else if inner_index.contains(&t[index[1]]) { index[1] }
+        else if inner_index.contains(&t[index[2]]) { index[2] }
+        else if inner_index.contains(&t[index[3]]) { index[3] }
+        else { panic!("The tetra is on the surface! Can't flip it!");};
+        print!("{:?}", i);
+        let height = volume * 3.0 / area[i]; // < 0
+        let normal: Vector3<f32> = unit_normal(&new_points, &tetra, i);
+        let length = f32::max(height * (-1.0 - ratio), 1e-6);
+        let flip: Vector3<f32> = normal * length;
+        new_points[t[i]] = new_points[t[i]].add(flip);
+    }
+    println!("");
+    new_points
+}
 pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>) -> Vec<Point> {
     let mut new_points = points.clone();
 
@@ -148,6 +220,15 @@ pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, ne
         let neighbors = get_neighbors(&neighbor_map, i);
         let sum = neighbors.iter().fold(Point::zero(), |sum, &j| sum.add(new_points[j].as_vec()));
         new_points[i] = sum.mul(1.0 / neighbors.len() as f32);
+    }
+    new_points
+}
+pub fn normalize_center(points: &Vec<Point>, center: Vector3<f32>, radius: f32, inner_index: &HashSet<usize>) -> Vec<Point> {
+    let mut new_points = points.clone();
+
+    for &i in inner_index {
+        let direction: Vector3<f32> = new_points[i].direction(center);
+        new_points[i] = Point::project_on_circle(center, direction, radius);
     }
     new_points
 }
@@ -317,6 +398,14 @@ impl Mesh {
         let new_points = flower_smoothing(&self.points, &self.inner_index, &self.inverse_map);
         self.points = new_points;
     }
+    pub fn flip_negative_volume(&mut self, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) {
+        let new_points = flip_negative_volume(&self.points, &self.tetras, inner_index, ratio, use_sort);
+        self.points = new_points;
+    }
+    pub fn normalize_center(&mut self, center: Vector3<f32>, radius: f32, inner_index: &HashSet<usize>) {
+        let new_points = normalize_center(&self.points, center, radius, inner_index);
+        self.points = new_points;
+    }
 }
 
 #[cfg(test)]
@@ -457,6 +546,40 @@ mod tests {
         }
         assert_ne!(points[1], Point::new(1.0, sqrt3, 0.0));
         assert_ne!(points[2], Point::new(sqrt3, 1.0, 0.0));
+    }
+    #[test]
+    fn test_volume() {
+        let points = vec![
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+            Point::new(0.0, 0.0, 1.0),
+        ];
+        let tetra = Tetra { index: [0, 1, 2, 3] };
+        let volume = tetra_volume(&points, &tetra);
+        assert_ne!(volume, 1.0 / 6.0);
+    }
+    #[test]
+    fn test_area() {
+        let sqrt3 = 1.7320508075688772;
+        let points = vec![
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+            Point::new(0.0, 0.0, 1.0),
+        ];
+        let tetra = Tetra { index: [0, 1, 2, 3] };
+        let area = tetra_area(&points, &tetra);
+        assert_eq!(area[0], sqrt3 / 2.0);
+        assert_eq!(area[1], 0.5);
+        assert_eq!(area[2], 0.5);
+        assert_eq!(area[3], 0.5);
+    }
+    #[test]
+    fn test_sort_vec_index() {
+        let v = vec![3.0, 1.0, 2.0, 0.0];
+        let index = sort_vec_index(&v);
+        assert_eq!(index, vec![3, 1, 2, 0]);
     }
 }
 

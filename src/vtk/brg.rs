@@ -563,6 +563,39 @@ impl Brg {
     pub fn smooth_inner_with_flower(&mut self) {
         self.mesh.smooth_inner_with_flower();
     }
+    pub fn flip_negative_volume(&mut self, ratio: f32) {
+        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = self.mesh.inner_index.union(&ball_index).cloned().collect();
+
+        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = inner_index.union(&sphire_index).cloned().collect();
+
+        self.mesh.flip_negative_volume(&inner_index, ratio, true);
+    }
+    pub fn normalize_center(&mut self) {
+        let ball_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        self.mesh.normalize_center(self.ball.x, self.ball.r, &ball_index);
+
+        let sphire_index = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        self.mesh.normalize_center(self.cage.pocket.x, self.cage.pocket.r, &sphire_index);
+    }
+    pub fn flip_negative_volume_only_sphire(&mut self, ratio: f32) {
+        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = ball_index.union(&sphire_index).cloned().collect();
+
+        self.mesh.flip_negative_volume(&inner_index, ratio, false);
+    }
+    pub fn std(&self) -> f32 {
+        let points_vec = self.get_points();
+        let mean_of_points = points_vec.iter().fold(Vector3::zeros(), |sum, p| sum + p.as_vec()) / (points_vec.len() as f32);
+        let variance_of_points = points_vec.iter().fold(0.0, |sum, p| sum + (p.as_vec() - mean_of_points).norm());
+        let s = (variance_of_points / (points_vec.len() as f32)).sqrt();
+        s
+    }
+    pub fn scale(&mut self, s: f32) {
+        self.mesh.points.iter_mut().for_each(|p| *p = p.mul(s));
+    }
 }
 
 #[cfg(test)]
