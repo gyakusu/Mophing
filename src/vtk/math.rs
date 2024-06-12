@@ -1,5 +1,6 @@
 extern crate nalgebra as na;
 use std::result::Result;
+use std::collections::HashSet;
 
 use na::Vector3;
 use na::Matrix3;
@@ -50,6 +51,10 @@ pub fn sort_three_numbers(v: [usize; 3]) -> ([usize; 3], bool) {
         (false, false, false) => ([c, b, a], false),
     }
 }
+pub fn has_duplication_vec4(index: &[usize; 4]) -> bool {
+    let unique_elements: HashSet<_> = index.iter().cloned().collect();
+    unique_elements.len() < 4
+}
 
 #[cfg(test)]
 mod tests {
@@ -75,5 +80,10 @@ mod tests {
         assert_eq!(sort_three_numbers([20, 30, 10]), ([10, 20, 30], true));
         assert_eq!(sort_three_numbers([30, 10, 20]), ([10, 20, 30], true));
         assert_eq!(sort_three_numbers([30, 20, 10]), ([10, 20, 30], false));
+    }
+    #[test]
+    fn test_has_duplication_vec4() {
+        assert_eq!(has_duplication_vec4(&[1, 2, 3, 4]), false);
+        assert_eq!(has_duplication_vec4(&[1, 2, 3, 3]), true);
     }
 }

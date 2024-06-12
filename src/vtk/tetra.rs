@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 extern crate nalgebra as na;
 
+use super::math::has_duplication_vec4;
 use super::face::Face;
 use super::flower::Flower;
 
@@ -14,6 +15,10 @@ impl Tetra {
     pub fn new(index: [usize; 4]) -> Result<Self, &'static str> {
         if index.len() != 4 {
             return Err("index must have a length of 4");
+        }
+        let has_duplication = has_duplication_vec4(&index);
+        if has_duplication {
+            return Err("index must not have duplication");
         }
         Ok(Self {
             index,

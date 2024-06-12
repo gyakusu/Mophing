@@ -186,14 +186,16 @@ pub fn flower_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, inver
     }
     new_points
 }
-pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) -> Vec<Point> {
-    let mut new_points = points.clone();
+pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) -> (Vec<Point>, bool) {
 
+    let mut new_points = points.clone();
+    let mut num_fliped = 0;
     for tetra in tetras {
         let volume = tetra_volume(&new_points, &tetra);
         if volume > 0.0 {
             continue;
         }
+        num_fliped += 1;
         let t = tetra.index;
         let area = tetra_area(&new_points, &tetra);
         // let index = sort_vec_index(&area);
@@ -202,15 +204,27 @@ pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_inde
         else if inner_index.contains(&t[index[1]]) { index[1] }
         else if inner_index.contains(&t[index[2]]) { index[2] }
         else if inner_index.contains(&t[index[3]]) { index[3] }
-        else { panic!("The tetra is on the surface! Can't flip it!");};
+        else {
+            println!("tetras num {}", tetras.len());
+            println!("first tetra {:?}", tetras[0].index);
+            println!("now tetra {:?}", t);
+
+            // println!(". The tetra on {}, {}, {}, {} is error. ", points[t[index[0]]].as_vec(), points[t[index[1]]].as_vec(), points[t[index[2]]].as_vec(), points[t[index[3]]].as_vec());
+            println!(". The tetra on {}, {}, {}, {} is error. ", t[index[0]], t[index[1]], t[index[2]], t[index[3]]);
+            panic!("The tetra is on the surface! Can't flip it!");
+        };
         print!("{:?}", i);
         let height = volume * 3.0 / area[i]; // < 0
         let length = f32::max(height * (-1.0 - ratio), 1e-6);
         let normal: Vector3<f32> = unit_normal(&new_points, &tetra, i);
         new_points[t[i]] = new_points[t[i]].add(normal * length);
     }
+    let success = num_fliped == 0;
+    if success {
+        print!("There are no negative volume tetras.");
+    }
     println!("");
-    new_points
+    (new_points, success)
 }
 pub fn laplacian_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>) -> Vec<Point> {
     let mut new_points = points.clone();
@@ -397,9 +411,10 @@ impl Mesh {
         let new_points = flower_smoothing(&self.points, &self.inner_index, &self.inverse_map);
         self.points = new_points;
     }
-    pub fn flip_negative_volume(&mut self, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) {
-        let new_points = flip_negative_volume(&self.points, &self.tetras, inner_index, ratio, use_sort);
+    pub fn flip_negative_volume(&mut self, inner_index: &HashSet<usize>, ratio: f32, use_sort: bool) -> bool {
+        let (new_points, success) = flip_negative_volume(&self.points, &self.tetras, inner_index, ratio, use_sort);
         self.points = new_points;
+        success
     }
     pub fn normalize_center(&mut self, center: Vector3<f32>, radius: f32, inner_index: &HashSet<usize>) {
         let new_points = normalize_center(&self.points, center, radius, inner_index);
@@ -543,8 +558,10 @@ mod tests {
         for _ in 0..iteration {
             points = laplacian_smoothing_with_axis_normalizing(&points, &inner_index, &surface_map, Vector3::zeros(), Vector3::new(0.0, 0.0, 1.0), 2.0);
         }
-        assert_ne!(points[1], Point::new(1.0, sqrt3, 0.0));
-        assert_ne!(points[2], Point::new(sqrt3, 1.0, 0.0));
+        // assert_ne!(points[1], Point::new(1.0, sqrt3, 0.0));
+        // assert_ne!(points[2], Point::new(sqrt3, 1.0, 0.0));
+        assert!(points[1].distance(&Point::new(1.0, sqrt3, 0.0)) < 1e-2);
+        assert!(points[2].distance(&Point::new(sqrt3, 1.0, 0.0)) < 1e-2);
     }
     #[test]
     fn test_volume() {
@@ -556,7 +573,7 @@ mod tests {
         ];
         let tetra = Tetra { index: [0, 1, 2, 3] };
         let volume = tetra_volume(&points, &tetra);
-        assert_ne!(volume, 1.0 / 6.0);
+        assert!(volume - 1.0 / 6.0 < 1e-6);
     }
     #[test]
     fn test_area() {

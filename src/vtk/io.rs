@@ -52,8 +52,11 @@ pub fn parse_tetra(chars: String, tetras: &mut Vec<Tetra>) {
         .collect();
     for chunk in nums.chunks(4) {
         if chunk.len() == 4 {
-            let tetra = Tetra::new([chunk[0], chunk[1], chunk[2], chunk[3]]).unwrap();
-            tetras.push(tetra);
+            let tetra = Tetra::new([chunk[0], chunk[1], chunk[2], chunk[3]]);
+
+            if tetra.is_ok() {
+                tetras.push(tetra.unwrap());
+            }
         }
     }
 }

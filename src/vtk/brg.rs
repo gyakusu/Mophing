@@ -2,12 +2,14 @@ use std::f32::consts::PI;
 use std::vec;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use pyo3::prelude::*;
 
 use nalgebra as na;
 use na::Vector3;
 
 use super::point::Point;
 use super::mesh::Mesh;
+use super::io::read_vtk;
 
 use super::mesh::laplacian_smoothing_on_plane;
 use super::mesh::laplacian_smoothing_with_axis_normalizing;
@@ -69,6 +71,7 @@ pub struct NeckParameter {
     pub h_ratio: f32, // 面取までの距離／dhの比率
     pub r_ratio: f32, // 面取半径／dhの比率
 }
+#[pyclass]
 #[derive(Clone, Debug)]
 pub struct CageParameter {
     pub axis: Vector3<f32>,
@@ -111,6 +114,37 @@ impl CageParameter {
         }
     }
 }
+#[pymethods]
+impl CageParameter {
+    #[new]
+    pub fn new(r0: f32, r1: f32, h0: f32, h1: f32, bevel: f32, pr: f32, nz: f32, nr: f32, nh: f32, ndh: f32) -> Self {
+        let pocket = PocketParameter {
+            x: Vector3::new(0.0, 2.65e-3, 2.00e-3),
+            r: pr,
+        };
+        let neck = NeckParameter {
+            x: Vector3::new(0.0, 2.65e-3, nz),
+            r: nr,
+            h: nh,
+            dh: ndh,
+            h_ratio: 0.355,
+            r_ratio: 0.55,
+        };
+        let cage_parameter = CageParameter {
+            axis: Vector3::new(0.0, 0.0, 1.0),
+            theta0: -PI / 6.0,
+            theta1:  PI / 6.0,
+            r0,
+            r1,
+            h0,
+            h1,
+            bevel,
+            pocket,
+            neck,
+        };
+        cage_parameter
+    }
+}
 #[derive(Clone, Debug)]
 pub struct BallParameter {
     pub r: f32,
@@ -127,6 +161,7 @@ impl BallParameter {
     }
 }
 #[derive(Clone, Debug)]
+#[pyclass]
 pub struct Brg {
     mesh: Mesh,
     cage: CageParameter,
@@ -136,6 +171,14 @@ pub struct Brg {
     faces: HashMap<String, HashSet<usize>>,
     periodics: (HashSet<usize>, HashSet<usize>),
     
+}
+#[pymethods]
+impl Brg {
+    #[new]
+    pub fn from_vtk_file(vtk_path: &str, cage: &CageParameter) -> Self {        
+        let mesh = read_vtk(vtk_path);
+        Self::new(&mesh, cage)
+    }
 }
 impl Brg {
     pub fn new(mesh: &Mesh, cage: &CageParameter) -> Self {        
@@ -148,8 +191,7 @@ impl Brg {
             periodics: (HashSet::new(), HashSet::new()), // 周期境界のインデックス
             
         }
-    }
-    pub fn sample(mesh: &Mesh) -> Self {
+    }    pub fn sample(mesh: &Mesh) -> Self {
         let cage = CageParameter::sample();
         Brg::new(mesh, &cage)
     }
@@ -228,6 +270,11 @@ impl Brg {
         let r_neck   = cutted_sphire_radius(cage.neck.r, cage.h1 - cage.neck.x[2]); // 肩部における爪部の半径
         let r_top    = cutted_sphire_radius(cage.neck.r, cage.neck.h - cage.neck.x[2]); // 頂部における爪外径の半径
         let r_apt    = r_middle + cage.neck.dh * cage.neck.r_ratio; // 頂部における爪内径の半径
+
+        // let r_cone = 1.0; // 保持器底面の面取りの傾斜．内径・外径共通にしてる．
+        // let x_apt: Vector3<f32> = Vector3::new(cage.pocket.x[0], cage.pocket.x[1], cage.neck.h - cage.neck.dh - cage.pocket.r / cage.neck.h_ratio);
+        // let x_cone_in: Vector3<f32>  = Vector3::new(0., 0., cage.h0 + (cage.r0 + cage.bevel) / r_cone);
+        // let x_cone_out: Vector3<f32> = Vector3::new(0., 0., cage.h0 - (cage.r1 - cage.bevel) / r_cone);
 
         let mut points: Vec<Point> = Vec::with_capacity(n);
 
@@ -437,44 +484,6 @@ impl Brg {
             }
         }
     }
-    pub fn project_all(&mut self) {
-
-        let bottom: Vector3<f32>   = Vector3::new(0.0, 0.0, self.cage.h0);
-        let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.cage.h1);
-        let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.cage.neck.h);
-        let axis: Vector3<f32>     = Vector3::new(0.0, 0.0, 1.0);
-
-        for i in self.faces.get("curvature_in").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r0);
-        }
-        for i in self.faces.get("curvature_out").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r1);
-        }
-        for i in self.faces.get("bottom").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_plane(bottom, axis);
-        }
-        for i in self.faces.get("top_left").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
-        }
-        for i in self.faces.get("top_right").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
-        }
-        for i in self.faces.get("shoulder_left").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
-        }
-        for i in self.faces.get("shoulder_right").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
-        }
-        for i in self.faces.get("sphire").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.pocket.x, self.cage.pocket.r);
-        }
-        for i in self.faces.get("sphire_left").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
-        }
-        for i in self.faces.get("sphire_right").unwrap_or(&HashSet::new()).clone() {
-            self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
-        }
-    }
     pub fn smooth_face(&mut self) {
 
         let points = self.get_points();
@@ -520,17 +529,28 @@ impl Brg {
             ("sphire_right", laplacian_smoothing_with_center_normalizing 
             as fn(&_, &_, &_, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
 
-            // ("ball", laplacian_smoothing_with_center_normalizing 
-            // as fn(&_, _, _, _, _, _) -> _, self.ball.x, axis, self.ball.r),
-
             ("periodic_left", laplacian_smoothing_on_plane 
             as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_left, 0.),
 
             ("periodic_right", laplacian_smoothing_on_plane 
             as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
 
-            // TODO: 円すい部分のスムージングもめんどくさいけどやること！
-            // (""),
+            // ////
+            // ("apature_left", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("apature_right", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("cone_in", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("cone_out", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+            
         ];
         for (name, function, arg1, arg2, arg3) in operations.iter() {
             let inner_index = get_inner_index(name);
@@ -563,15 +583,6 @@ impl Brg {
     pub fn smooth_inner_with_flower(&mut self) {
         self.mesh.smooth_inner_with_flower();
     }
-    pub fn flip_negative_volume(&mut self, ratio: f32) {
-        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        let inner_index: HashSet<usize> = self.mesh.inner_index.union(&ball_index).cloned().collect();
-
-        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
-        let inner_index: HashSet<usize> = inner_index.union(&sphire_index).cloned().collect();
-
-        self.mesh.flip_negative_volume(&inner_index, ratio, true);
-    }
     pub fn normalize_center(&mut self) {
         let ball_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
         self.mesh.normalize_center(self.ball.x, self.ball.r, &ball_index);
@@ -579,12 +590,21 @@ impl Brg {
         let sphire_index = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
         self.mesh.normalize_center(self.cage.pocket.x, self.cage.pocket.r, &sphire_index);
     }
-    pub fn flip_negative_volume_only_sphire(&mut self, ratio: f32) {
+    pub fn flip_negative_volume(&mut self, ratio: f32) -> bool {
+        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = self.mesh.inner_index.union(&ball_index).cloned().collect();
+
+        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = inner_index.union(&sphire_index).cloned().collect();
+
+        self.mesh.flip_negative_volume(&inner_index, ratio, true)
+    }
+    pub fn flip_negative_volume_only_sphire(&mut self, ratio: f32) -> bool {
         let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
         let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
         let inner_index: HashSet<usize> = ball_index.union(&sphire_index).cloned().collect();
 
-        self.mesh.flip_negative_volume(&inner_index, ratio, false);
+        self.mesh.flip_negative_volume(&inner_index, ratio, false)
     }
     pub fn std(&self) -> f32 {
         let points_vec = self.get_points();
@@ -657,3 +677,44 @@ mod tests {
     }
 }
 
+
+
+
+    // pub fn project_all(&mut self) {
+
+    //     let bottom: Vector3<f32>   = Vector3::new(0.0, 0.0, self.cage.h0);
+    //     let shoulder: Vector3<f32> = Vector3::new(0.0, 0.0, self.cage.h1);
+    //     let top: Vector3<f32>      = Vector3::new(0.0, 0.0, self.cage.neck.h);
+    //     let axis: Vector3<f32>     = Vector3::new(0.0, 0.0, 1.0);
+
+    //     for i in self.faces.get("curvature_in").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r0);
+    //     }
+    //     for i in self.faces.get("curvature_out").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_cylinder(bottom, axis, self.cage.r1);
+    //     }
+    //     for i in self.faces.get("bottom").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_plane(bottom, axis);
+    //     }
+    //     for i in self.faces.get("top_left").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
+    //     }
+    //     for i in self.faces.get("top_right").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_plane(top, axis);
+    //     }
+    //     for i in self.faces.get("shoulder_left").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
+    //     }
+    //     for i in self.faces.get("shoulder_right").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_plane(shoulder, axis);
+    //     }
+    //     for i in self.faces.get("sphire").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.pocket.x, self.cage.pocket.r);
+    //     }
+    //     for i in self.faces.get("sphire_left").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
+    //     }
+    //     for i in self.faces.get("sphire_right").unwrap_or(&HashSet::new()).clone() {
+    //         self.mesh.points[i] = self.mesh.points[i].project_on_sphire(self.cage.neck.x, self.cage.neck.r);
+    //     }
+    // }
