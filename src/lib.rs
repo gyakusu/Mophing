@@ -1,10 +1,13 @@
 pub mod vtk;
+use vtk::brg::{CageParameter, Brg};
 
-// use pyo3::prelude::*;
-// use CageParameter::*;
+use pyo3::prelude::*;
 
-// #[pymodule]
-// fn morphing(_py: Python, m: &PyModule) -> PyResult<()> {
-//     m.add_class::<CageParameter>()?;
-//     Ok(())
-// }
+#[pymodule]
+fn morphing(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<CageParameter>()?;
+    m.add_class::<Brg>()?;
+    Ok(())
+}
+
+

@@ -10,6 +10,8 @@ use na::Vector3;
 use super::point::Point;
 use super::mesh::Mesh;
 use super::io::read_vtk;
+use super::io::read_edge_from_xml;
+use super::io::read_index_from_xml;
 
 use super::mesh::laplacian_smoothing_on_plane;
 use super::mesh::laplacian_smoothing_with_axis_normalizing;
@@ -175,10 +177,169 @@ pub struct Brg {
 #[pymethods]
 impl Brg {
     #[new]
-    pub fn from_vtk_file(vtk_path: &str, cage: &CageParameter) -> Self {        
+    pub fn from_file(vtk_path: &str, index_path: &str, cage: &CageParameter) -> Self {        
         let mesh = read_vtk(vtk_path);
-        Self::new(&mesh, cage)
+        let edges = read_edge_from_xml(index_path, "edge").unwrap();
+        let faces = read_index_from_xml(index_path, "face").unwrap();
+        let mut brg = Brg::new(&mesh, cage);
+        brg.set_edge_and_face(&edges, &faces);
+        brg
     }
+    pub fn reload_cage(&mut self, cage: &CageParameter) {
+        self.cage = cage.clone();
+    }
+    pub fn smooth_face(&mut self) {
+
+        let points = self.get_points();
+        let bottom: Vector3<f32>    = Vector3::new(0.0, 0.0, self.cage.h0);
+        let shoulder: Vector3<f32>  = Vector3::new(0.0, 0.0, self.cage.h1);
+        let top: Vector3<f32>       = Vector3::new(0.0, 0.0, self.cage.neck.h);
+        let axis: Vector3<f32>      = Vector3::new(0.0, 0.0, 1.0);
+        let axis_left: Vector3<f32> = Vector3::new(self.cage.theta0.cos(), self.cage.theta0.sin(), 0.0);
+        let axis_right: Vector3<f32> = Vector3::new(self.cage.theta1.cos(), self.cage.theta1.sin(), 0.0);
+
+        let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&HashSet::new()).clone();
+        let surface_map = self.mesh.surface_map.clone();
+
+        let operations: [(&str, fn(&Vec<Point>, &HashSet<usize>, &HashMap<usize, HashSet<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
+        [
+            ("curvature_in", laplacian_smoothing_with_axis_normalizing 
+            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r0),
+
+            ("curvature_out", laplacian_smoothing_with_axis_normalizing 
+            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r1),
+
+            ("bottom", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, 0.),
+
+            ("top_left", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, top, axis, 0.),
+
+            ("top_right", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, top, axis, 0.),
+
+            ("shoulder_left", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, shoulder, axis, 0.),
+
+            ("shoulder_right", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, shoulder, axis, 0.),
+
+            ("sphire", laplacian_smoothing_with_center_normalizing 
+            as fn(&_, &_, &_, _, _, _) -> _, self.cage.pocket.x, axis, self.cage.pocket.r),
+
+            ("sphire_left", laplacian_smoothing_with_center_normalizing 
+            as fn(&_, &_, &_, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
+
+            ("sphire_right", laplacian_smoothing_with_center_normalizing 
+            as fn(&_, &_, &_, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
+
+            ("periodic_left", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_left, 0.),
+
+            ("periodic_right", laplacian_smoothing_on_plane 
+            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("apature_left", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("apature_right", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("cone_in", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+
+            // ////
+            // ("cone_out", laplacian_smoothing_with_cone_normalizing 
+            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+            
+        ];
+        for (name, function, arg1, arg2, arg3) in operations.iter() {
+            let inner_index = get_inner_index(name);
+            let smoothed_point = function(&points, &inner_index, &surface_map, *arg1, *arg2, *arg3);
+            inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
+        }
+    }
+    pub fn smooth_ball(&mut self) {
+        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
+        let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
+        for i in inner_index.clone() {
+            self.mesh.points[i] = new_points[i];
+        }
+    }
+    pub fn smooth_ball_with_cotangent(&mut self) {
+        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let neighbor_map = self.mesh.neighbor_map.clone();
+        let new_points = laplacian_smoothing_with_cotangent_and_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
+        for i in inner_index.clone() {
+            self.mesh.points[i] = new_points[i];
+        }
+    }
+    pub fn smooth_inner(&mut self) {
+        self.mesh.smooth_inner();
+    }
+    pub fn smooth_inner_with_cotangent(&mut self) {
+        self.mesh.smooth_inner_with_cotangent();
+    }
+    pub fn smooth_inner_with_flower(&mut self) {
+        self.mesh.smooth_inner_with_flower();
+    }
+    pub fn linspace_all(&mut self) {
+        for name in self.edges.keys() {
+            let index = self.edges.get(name).unwrap();
+            let points: Vec<Point> = self.linspace(name);
+
+            #[cfg(debug_assertions)] {
+                let old_points_all = self.get_points();
+                let old_points: Vec<Point> = index.iter().map(|i| old_points_all[*i as usize]).collect();
+                let distance_small = (points.first().unwrap().as_vec() - old_points.first().unwrap().as_vec()).norm();
+                let distance_large = (points.first().unwrap().as_vec() - old_points.last().unwrap().as_vec()).norm();
+                if distance_small > distance_large {
+                    // panic!("must be flipped at {}", name)
+                }
+                // println!("{}", distance_small); // 目視で確認．点の移動が大きい場合はflip_xを使う．
+            }
+            for i in 0..index.len() {
+                self.mesh.points[index[i] as usize] = points[i];
+            }
+        }
+    }
+    pub fn scale(&mut self, s: f32) {
+        self.mesh.points.iter_mut().for_each(|p| *p = p.mul(s));
+    }
+    pub fn std(&self) -> f32 {
+        let points_vec = self.get_points();
+        let mean_of_points = points_vec.iter().fold(Vector3::zeros(), |sum, p| sum + p.as_vec()) / (points_vec.len() as f32);
+        let variance_of_points = points_vec.iter().fold(0.0, |sum, p| sum + (p.as_vec() - mean_of_points).norm());
+        let s = (variance_of_points / (points_vec.len() as f32)).sqrt();
+        s
+    }
+    pub fn normalize_center(&mut self) {
+        let ball_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        self.mesh.normalize_center(self.ball.x, self.ball.r, &ball_index);
+
+        let sphire_index = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        self.mesh.normalize_center(self.cage.pocket.x, self.cage.pocket.r, &sphire_index);
+    }
+    pub fn flip_negative_volume(&mut self, ratio: f32) -> bool {
+        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = self.mesh.inner_index.union(&ball_index).cloned().collect();
+
+        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = inner_index.union(&sphire_index).cloned().collect();
+
+        self.mesh.flip_negative_volume(&inner_index, ratio, true)
+    }
+    pub fn flip_negative_volume_only_sphire(&mut self, ratio: f32) -> bool {
+        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
+        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
+        let inner_index: HashSet<usize> = ball_index.union(&sphire_index).cloned().collect();
+
+        self.mesh.flip_negative_volume(&inner_index, ratio, false)
+    }    
 }
 impl Brg {
     pub fn new(mesh: &Mesh, cage: &CageParameter) -> Self {        
@@ -463,158 +624,6 @@ impl Brg {
             return points.iter().map(|p| p.flip_x()).collect();
         }
         points
-    }
-    pub fn linspace_all(&mut self) {
-        for name in self.edges.keys() {
-            let index = self.edges.get(name).unwrap();
-            let points: Vec<Point> = self.linspace(name);
-
-            #[cfg(debug_assertions)] {
-                let old_points_all = self.get_points();
-                let old_points: Vec<Point> = index.iter().map(|i| old_points_all[*i as usize]).collect();
-                let distance_small = (points.first().unwrap().as_vec() - old_points.first().unwrap().as_vec()).norm();
-                let distance_large = (points.first().unwrap().as_vec() - old_points.last().unwrap().as_vec()).norm();
-                if distance_small > distance_large {
-                    // panic!("must be flipped at {}", name)
-                }
-                // println!("{}", distance_small); // 目視で確認．点の移動が大きい場合はflip_xを使う．
-            }
-            for i in 0..index.len() {
-                self.mesh.points[index[i] as usize] = points[i];
-            }
-        }
-    }
-    pub fn smooth_face(&mut self) {
-
-        let points = self.get_points();
-        let bottom: Vector3<f32>    = Vector3::new(0.0, 0.0, self.cage.h0);
-        let shoulder: Vector3<f32>  = Vector3::new(0.0, 0.0, self.cage.h1);
-        let top: Vector3<f32>       = Vector3::new(0.0, 0.0, self.cage.neck.h);
-        let axis: Vector3<f32>      = Vector3::new(0.0, 0.0, 1.0);
-        let axis_left: Vector3<f32> = Vector3::new(self.cage.theta0.cos(), self.cage.theta0.sin(), 0.0);
-        let axis_right: Vector3<f32> = Vector3::new(self.cage.theta1.cos(), self.cage.theta1.sin(), 0.0);
-
-        let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&HashSet::new()).clone();
-        let surface_map = self.mesh.surface_map.clone();
-
-        let operations: [(&str, fn(&Vec<Point>, &HashSet<usize>, &HashMap<usize, HashSet<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
-        [
-            ("curvature_in", laplacian_smoothing_with_axis_normalizing 
-            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r0),
-
-            ("curvature_out", laplacian_smoothing_with_axis_normalizing 
-            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r1),
-
-            ("bottom", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, 0.),
-
-            ("top_left", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, top, axis, 0.),
-
-            ("top_right", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, top, axis, 0.),
-
-            ("shoulder_left", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, shoulder, axis, 0.),
-
-            ("shoulder_right", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, shoulder, axis, 0.),
-
-            ("sphire", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, &_, &_, _, _, _) -> _, self.cage.pocket.x, axis, self.cage.pocket.r),
-
-            ("sphire_left", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, &_, &_, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
-
-            ("sphire_right", laplacian_smoothing_with_center_normalizing 
-            as fn(&_, &_, &_, _, _, _) -> _, self.cage.neck.x, axis, self.cage.neck.r),
-
-            ("periodic_left", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_left, 0.),
-
-            ("periodic_right", laplacian_smoothing_on_plane 
-            as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-
-            // ////
-            // ("apature_left", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-
-            // ////
-            // ("apature_right", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-
-            // ////
-            // ("cone_in", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-
-            // ////
-            // ("cone_out", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-            
-        ];
-        for (name, function, arg1, arg2, arg3) in operations.iter() {
-            let inner_index = get_inner_index(name);
-            let smoothed_point = function(&points, &inner_index, &surface_map, *arg1, *arg2, *arg3);
-            inner_index.iter().for_each(|&i| self.mesh.points[i] = smoothed_point[i]);
-        }
-    }
-    pub fn smooth_ball(&mut self) {
-        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        let neighbor_map = self.mesh.neighbor_map.clone();
-        let new_points = laplacian_smoothing_with_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
-        for i in inner_index.clone() {
-            self.mesh.points[i] = new_points[i];
-        }
-    }
-    pub fn smooth_ball_with_cotangent(&mut self) {
-        let inner_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        let neighbor_map = self.mesh.neighbor_map.clone();
-        let new_points = laplacian_smoothing_with_cotangent_and_center_normalizing(&self.get_points(), &inner_index, &neighbor_map, self.ball.x, Vector3::zeros(), self.ball.r);
-        for i in inner_index.clone() {
-            self.mesh.points[i] = new_points[i];
-        }
-    }
-    pub fn smooth_inner(&mut self) {
-        self.mesh.smooth_inner();
-    }
-    pub fn smooth_inner_with_cotangent(&mut self) {
-        self.mesh.smooth_inner_with_cotangent();
-    }
-    pub fn smooth_inner_with_flower(&mut self) {
-        self.mesh.smooth_inner_with_flower();
-    }
-    pub fn normalize_center(&mut self) {
-        let ball_index = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        self.mesh.normalize_center(self.ball.x, self.ball.r, &ball_index);
-
-        let sphire_index = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
-        self.mesh.normalize_center(self.cage.pocket.x, self.cage.pocket.r, &sphire_index);
-    }
-    pub fn flip_negative_volume(&mut self, ratio: f32) -> bool {
-        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        let inner_index: HashSet<usize> = self.mesh.inner_index.union(&ball_index).cloned().collect();
-
-        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
-        let inner_index: HashSet<usize> = inner_index.union(&sphire_index).cloned().collect();
-
-        self.mesh.flip_negative_volume(&inner_index, ratio, true)
-    }
-    pub fn flip_negative_volume_only_sphire(&mut self, ratio: f32) -> bool {
-        let ball_index: HashSet<usize> = self.faces.get("on_ball").unwrap_or(&HashSet::new()).clone();
-        let sphire_index: HashSet<usize> = self.faces.get("sphire").unwrap_or(&HashSet::new()).clone();
-        let inner_index: HashSet<usize> = ball_index.union(&sphire_index).cloned().collect();
-
-        self.mesh.flip_negative_volume(&inner_index, ratio, false)
-    }
-    pub fn std(&self) -> f32 {
-        let points_vec = self.get_points();
-        let mean_of_points = points_vec.iter().fold(Vector3::zeros(), |sum, p| sum + p.as_vec()) / (points_vec.len() as f32);
-        let variance_of_points = points_vec.iter().fold(0.0, |sum, p| sum + (p.as_vec() - mean_of_points).norm());
-        let s = (variance_of_points / (points_vec.len() as f32)).sqrt();
-        s
-    }
-    pub fn scale(&mut self, s: f32) {
-        self.mesh.points.iter_mut().for_each(|p| *p = p.mul(s));
     }
 }
 

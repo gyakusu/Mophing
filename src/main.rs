@@ -25,18 +25,8 @@ fn main() {
     let index_path = arg_str(1);
     let write_path = arg_str(2);
 
-    let param = CageParameter::new(arg_f32(0), arg_f32(1), arg_f32(2), arg_f32(3), arg_f32(4), arg_f32(5), arg_f32(6), arg_f32(7), arg_f32(8), arg_f32(9));
-    let mut brg = Brg::from_vtk_file(origin_path, &param);
-
-    let section0 = "edge";
-    let section1 = "face";
-    let edges = io::read_edge_from_xml(index_path, section0).unwrap();
-    let faces = io::read_index_from_xml(index_path, section1).unwrap();
-
-    brg.set_edge_and_face(&edges, &faces);
-
-    println!("set edge and face done");
-    println!("edge: {:?}", edges.len());
+    let cage = CageParameter::new(arg_f32(0), arg_f32(1), arg_f32(2), arg_f32(3), arg_f32(4), arg_f32(5), arg_f32(6), arg_f32(7), arg_f32(8), arg_f32(9));
+    let mut brg = Brg::from_file(origin_path, index_path, &cage);
 
     brg.linspace_all();
 
