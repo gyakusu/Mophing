@@ -5,11 +5,9 @@ edition = "2021"
 
 [lib]
 name = "morphing"
-crate-type = ["cdylib"]
 
 [dependencies]
 xml-rs = "0.8.3"
-plotters = "0.3.3"
 nalgebra = "*"
 pyo3 = "0.21"
 

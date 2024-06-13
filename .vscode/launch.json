@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'mophing'",
+            "name": "Debug unit tests in library 'morphing'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=mophing"
+                    "--package=morphing"
                 ],
                 "filter": {
-                    "name": "mophing",
+                    "name": "morphing",
                     "kind": "lib"
                 }
             },
@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'mophing'",
+            "name": "Debug executable 'morphing'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=mophing",
-                    "--package=mophing"
+                    "--bin=morphing",
+                    "--package=morphing"
                 ],
                 "filter": {
-                    "name": "mophing",
+                    "name": "morphing",
                     "kind": "bin"
                 }
             },
