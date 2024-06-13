@@ -12,6 +12,7 @@ use super::mesh::Mesh;
 use super::io::read_vtk;
 use super::io::read_edge_from_xml;
 use super::io::read_index_from_xml;
+use super::io::copy_vtk_and_replace_point;
 
 use super::mesh::laplacian_smoothing_on_plane;
 use super::mesh::laplacian_smoothing_with_axis_normalizing;
@@ -339,7 +340,11 @@ impl Brg {
         let inner_index: HashSet<usize> = ball_index.union(&sphire_index).cloned().collect();
 
         self.mesh.flip_negative_volume(&inner_index, ratio, false)
-    }    
+    }
+    pub fn write_vtk_from_base(&self, origin_path: &str, write_path: &str) {
+        copy_vtk_and_replace_point(origin_path, write_path, &self.get_points());
+
+    }
 }
 impl Brg {
     pub fn new(mesh: &Mesh, cage: &CageParameter) -> Self {        

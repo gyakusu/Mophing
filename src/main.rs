@@ -1,4 +1,3 @@
-use morphing::vtk::io;
 use morphing::vtk::brg::{Brg, CageParameter, };
 use morphing::vtk::mesh::check_smoothing_quality;
 
@@ -84,7 +83,7 @@ fn main() {
     }
     if all_success {
         println!("I finished the all process.");
-        io::copy_vtk_and_replace_point(origin_path, write_path, &brg.get_points());
+        brg.write_vtk_from_base(origin_path, write_path);
     }
 }
 
