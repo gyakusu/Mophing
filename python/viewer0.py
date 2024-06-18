@@ -1,3 +1,4 @@
+#In[0]:
 import sys
 from PyQt5 import QtCore, QtWidgets
 import pyqtgraph as pg
@@ -5,7 +6,28 @@ import pyqtgraph.opengl as gl
 import numpy as np
 import pyvista as pv
 from morphing.morphing import CageParameter, Brg
+import matplotlib.cm as cm
+from scipy.spatial import KDTree
+from matplotlib import pyplot as plt
 
+def map_stress_to_color(stress_values, cmap='jet'):
+    norm = plt.Normalize(vmin=stress_values.min(), vmax=stress_values.max())
+    return plt.get_cmap(cmap)(norm(stress_values))
+
+#In[0]:
+# mesh = pv.read('../data/FEM/FEM2_solved.vtu')
+
+# surface = mesh.extract_geometry()
+
+# vertex_stress_values = np.array(surface.cell_data['von_mises_stress'])
+# colors = map_stress_to_color(vertex_stress_values)
+
+
+#In[0]:
+
+#In[0]:
+
+#In[0]:
 class ControlGroup(QtWidgets.QWidget):
     def __init__(self, label, min_max, value_label, parent=None):
         super().__init__(parent)
@@ -29,6 +51,7 @@ class ControlGroup(QtWidgets.QWidget):
         self.value_label = QtWidgets.QLabel(self)
         self.value_label.setFixedSize(100, 30)
         self.value_label.setText(self.vl(self.control_bar.value()))
+        
 
         # Arrange the widgets in a layout
         layout = QtWidgets.QHBoxLayout(self)
@@ -54,12 +77,12 @@ class Window(QtWidgets.QMainWindow):
         self.mesh = mesh
         
         self.total_label = QtWidgets.QLabel(self)
-        self.total_label.setFixedSize(150, 30)
-        self.total_label.setText(f'Torque: 0 [Nmm]')
+        self.total_label.setFixedSize(400, 30)
+        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [N/mm^2]')
         
         # Create a 3D graphics widget
         self.view = gl.GLViewWidget(self)
-        self.view.setFixedSize(800, 800)
+        self.view.setFixedSize(1200, 800)
         self.view.setCameraPosition(distance=1e-2, azimuth=30, elevation=-60)
         self.view.setBackgroundColor(pg.mkColor(255, 255, 255))
         
@@ -67,9 +90,11 @@ class Window(QtWidgets.QMainWindow):
         surface = self.mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-        colors = np.array([(i / len(faces), 0, 0, 0.5) for i in range(len(faces))])       
         
-        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)        
+        vertex_stress_values = surface['von_mises_stress']
+        colors = map_stress_to_color(vertex_stress_values)
+
+        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)       
         self.view.addItem(mesh_item)
         
         self.control_groups = control_groups
@@ -77,9 +102,9 @@ class Window(QtWidgets.QMainWindow):
         # Create a splitter to hold the control bar and the view
         splitter = QtWidgets.QSplitter(self)
         splitter.addWidget(self.view)
-        splitter.addWidget(self.total_label)
         
         layout = QtWidgets.QVBoxLayout()  # Change here
+        layout.addWidget(self.total_label)
         for control_group in self.control_groups:
             layout.addWidget(control_group)
         
@@ -87,11 +112,11 @@ class Window(QtWidgets.QMainWindow):
         control_widget.setLayout(layout)
         splitter.addWidget(control_widget)
                 
-        # Set the splitter as the central widget
-        self.setCentralWidget(splitter)
-        
         for control_group in self.control_groups:
             control_group.control_bar.sliderReleased.connect(self.update_value)
+            
+        # Set the splitter as the central widget
+        self.setCentralWidget(splitter)
 
     def update_value(self):
         cp = [control_group.get_value() for control_group in self.control_groups]
@@ -116,18 +141,20 @@ class Window(QtWidgets.QMainWindow):
         surface = self.mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-        colors = np.array([(i / len(faces), 0, 0, 0.5) for i in range(len(faces))])       
+
+        vertex_stress_values = surface['von_mises_stress']
+        colors = map_stress_to_color(vertex_stress_values)
         
         self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)
                
         total = sum([control_group.get_value() for control_group in self.control_groups])
-        self.total_label.setText(f'Torque: {total} [Nmm]')
+        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [N/mm^2]')
         
 if __name__ == '__main__':
     
-    labels = ['内径', '外径', '底面高さ', '肩高さ', '面取り', 'ポケット径', '肩中心高さ', '肩径', '爪高さ', '爪から面までの距離']
-    means = [2.35e-3, 2.85e-3, 0.93e-3, 2.10e-3, 0.2, 0.825e-3, 1.70e-3, 1.20e-3, 2.45e-3, 0.2]
-    diffs = [0.10e-3, 0.10e-3, 0.10e-3, 0.10e-3, 0.1, 0.001e-3, 0.02e-3, 0.02e-3, 0.10e-3, 0.1]
+    labels = ['内径', '外径', '底面高さ', '肩高さ', '面取り', 'ポケット径', '肩中心高さ', '肩径', '爪高さ', '爪面とり大きさ']
+    means = [2.35e-3, 2.85e-3, 0.93e-3, 2.10e-3, 0.2, 0.840e-3, 1.70e-3, 1.20e-3, 2.45e-3, 0.2]
+    diffs = [0.10e-3, 0.10e-3, 0.10e-3, 0.10e-3, 0.1, 0.015e-3, 0.02e-3, 0.02e-3, 0.10e-3, 0.1]
     mm0 = lambda i: [int((means[i] - diffs[i])*1e6), int((means[i] + diffs[i])*1e6)]
     mm1 = lambda i: [int((means[i] - diffs[i])*1e2), int((means[i] + diffs[i])*1e2)]
     vl0 = lambda v: f'{v * 1e-3:.4g} [mm]'
@@ -135,11 +162,11 @@ if __name__ == '__main__':
     min_maxs     = [mm0, mm0, mm0, mm0, mm1, mm0, mm0, mm0, mm0, mm1]
     value_labels = [vl0, vl0, vl0, vl0, vl1, vl0, vl0, vl0, vl0, vl1]
     
-    cage = CageParameter(means[0], means[1], means[2], means[3], means[4], means[5], means[6], means[7], means[8], means[9])
-    brg = Brg("data/FEM/FEM2.vtu", "data/FEM/index2.xml", cage)
-    filename = 'data/FEM/FEM2.vtu'
+    cage = CageParameter(*means)
+    filename = 'data/FEM/FEM2_solved.vtu'
+    brg = Brg(filename, "data/FEM/index2.xml", cage)
     mesh = pv.read(filename)
-        
+    
     app = QtWidgets.QApplication(sys.argv)
     control_groups = [ControlGroup(labels[i], min_maxs[i](i), value_labels[i]) for i in range(10)]
     window = Window(control_groups, brg, mesh)
