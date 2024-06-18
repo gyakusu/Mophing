@@ -293,6 +293,9 @@ pub fn laplacian_smoothing_on_plane(points: &Vec<Point>, inner_index: &HashSet<u
     }
     new_points
 }
+pub fn laplacian_smoothing_wrapper(points: &Vec<Point>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, _: Vector3<f32>, _: Vector3<f32>, _: f32) -> Vec<Point> {
+    laplacian_smoothing(points, inner_index, neighbor_map)
+}
 pub fn cotangent_laplacian_smoothing(points: &Vec<Point>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>) -> Vec<Point> {
 
     let mut new_points = points.clone();
@@ -419,6 +422,22 @@ impl Mesh {
     pub fn normalize_center(&mut self, center: Vector3<f32>, radius: f32, inner_index: &HashSet<usize>) {
         let new_points = normalize_center(&self.points, center, radius, inner_index);
         self.points = new_points;
+    }
+    pub fn surface_tetra_and_triangle(&self) -> HashMap<usize, Face> {
+        
+        let mut map: HashMap<usize, Face> = HashMap::new();
+        let surface_faces = self.surface_faces.clone();
+
+        for face in surface_faces {
+            for (i, tetra) in self.tetras.iter().enumerate() {
+                let (contain, _) = tetra.contain_and_remain(&face);
+                if contain {
+                    map.insert(i, face);
+                    break;
+                }
+            }
+        }
+        map
     }
 }
 

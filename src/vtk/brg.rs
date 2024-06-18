@@ -18,6 +18,7 @@ use super::mesh::laplacian_smoothing_on_plane;
 use super::mesh::laplacian_smoothing_with_axis_normalizing;
 use super::mesh::laplacian_smoothing_with_center_normalizing;
 use super::mesh::laplacian_smoothing_with_cotangent_and_center_normalizing;
+use super::mesh::laplacian_smoothing_wrapper;
 // use super::mesh::laplacian_smoothing_with_cone_normalizing;
 
 fn linspace_arc(i: usize, center: Vector3<f32>, radius: f32, theta: f32, dtheta: f32) -> Point {
@@ -189,6 +190,21 @@ impl Brg {
     pub fn reload_cage(&mut self, cage: &CageParameter) {
         self.cage = cage.clone();
     }
+    pub fn get_points_as_list(&self, py: Python) -> PyResult<PyObject> {
+        let points = self.get_points(); // Assuming this returns Vec<[f64; 3]>
+        let py_points: Vec<Vec<f64>> = points.iter().map(|p| p.as_vec().iter().map(|&x| x as f64).collect()).collect();
+        Ok(py_points.into_py(py))
+    }
+    pub fn get_surface_tetra_and_triangle_as_list(&self, py: Python) -> PyResult<PyObject> {
+        let tetra_map: HashMap<usize, super::face::Face> = self.mesh.surface_tetra_and_triangle();
+        
+        let py_tetra_map: Vec<Vec<usize>> = tetra_map.iter().map(|t| {
+            let fi: [usize; 3] = t.1.as_vec(); 
+            let vec: Vec<usize> = vec![*t.0, fi[0], fi[1], fi[2]];
+            vec
+        }).collect();
+        Ok(py_tetra_map.into_py(py))
+    }
     pub fn smooth_face(&mut self) {
 
         let points = self.get_points();
@@ -202,7 +218,7 @@ impl Brg {
         let get_inner_index = |name: &str| self.faces.get(name).unwrap_or(&HashSet::new()).clone();
         let surface_map = self.mesh.surface_map.clone();
 
-        let operations: [(&str, fn(&Vec<Point>, &HashSet<usize>, &HashMap<usize, HashSet<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 12] =
+        let operations: [(&str, fn(&Vec<Point>, &HashSet<usize>, &HashMap<usize, HashSet<usize>>, Vector3<f32>, Vector3<f32>, f32) -> Vec<Point>, Vector3<f32>, Vector3<f32>, f32); 18] =
         [
             ("curvature_in", laplacian_smoothing_with_axis_normalizing 
             as fn(&_, &_, &_, _, _, _) -> _, bottom, axis, self.cage.r0),
@@ -240,22 +256,23 @@ impl Brg {
             ("periodic_right", laplacian_smoothing_on_plane 
             as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
 
-            // ////
-            // ("apature_left", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+            ("apature_left", laplacian_smoothing_wrapper
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),
 
-            // ////
-            // ("apature_right", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+            ("apature_right", laplacian_smoothing_wrapper 
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),
 
-            // ////
-            // ("cone_in", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
+            ("cone_in", laplacian_smoothing_wrapper 
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),
 
-            // ////
-            // ("cone_out", laplacian_smoothing_with_cone_normalizing 
-            // as fn(&_, &_, &_, _, _, _) -> _, bottom, axis_right, 0.),
-            
+            ("cone_out", laplacian_smoothing_wrapper 
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),
+
+            ("straw_left", laplacian_smoothing_wrapper 
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),
+
+            ("straw_right", laplacian_smoothing_wrapper 
+            as fn(&_, &_, &_, _, _, _) -> _, axis, axis, 0.),            
         ];
         for (name, function, arg1, arg2, arg3) in operations.iter() {
             let inner_index = get_inner_index(name);
