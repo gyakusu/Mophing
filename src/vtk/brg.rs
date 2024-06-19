@@ -187,8 +187,16 @@ impl Brg {
         brg.set_edge_and_face(&edges, &faces);
         brg
     }
-    pub fn reload_cage(&mut self, cage: &CageParameter) {
+    pub fn reload_cage(&mut self, cage: &CageParameter, i: usize, j: usize) {
         self.cage = cage.clone();
+        self.linspace_all();
+        for _ in 0..i {
+            self.smooth_face();
+        }
+        for _ in 0..j {
+            self.smooth_ball();
+            self.smooth_inner();
+        }
     }
     pub fn get_points_as_list(&self, py: Python) -> PyResult<PyObject> {
         let points = self.get_points(); // Assuming this returns Vec<[f64; 3]>

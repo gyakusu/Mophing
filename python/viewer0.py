@@ -1,14 +1,16 @@
 #In[0]:
+# !maturin develop
+
+#In[0]:
 import sys
 from PyQt5 import QtCore, QtWidgets
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import numpy as np
 import pyvista as pv
-from morphing.morphing import CageParameter, Brg
-import matplotlib.cm as cm
-from scipy.spatial import KDTree
 from matplotlib import pyplot as plt
+
+from morphing.morphing import CageParameter, Brg
 
 def map_stress_to_color(stress_values, cmap='jet'):
     norm = plt.Normalize(vmin=stress_values.min(), vmax=stress_values.max())
@@ -21,7 +23,6 @@ def map_stress_to_color(stress_values, cmap='jet'):
 
 # vertex_stress_values = np.array(surface.cell_data['von_mises_stress'])
 # colors = map_stress_to_color(vertex_stress_values)
-
 
 #In[0]:
 
@@ -73,12 +74,13 @@ class Window(QtWidgets.QMainWindow):
     def __init__(self, control_groups, brg, mesh):
         super().__init__()
 
+        self.control_groups = control_groups
         self.brg = brg
         self.mesh = mesh
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
-        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [N/mm^2]')
+        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [MPa]')
         
         # Create a 3D graphics widget
         self.view = gl.GLViewWidget(self)
@@ -90,14 +92,18 @@ class Window(QtWidgets.QMainWindow):
         surface = self.mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-        
         vertex_stress_values = surface['von_mises_stress']
         colors = map_stress_to_color(vertex_stress_values)
-
-        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)       
+        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)
+        
         self.view.addItem(mesh_item)
         
-        self.control_groups = control_groups
+        # 球の中心座標と半径
+        md = gl.MeshData.sphere(rows=20, cols=20, radius=0.76e-3)
+        sphere_item = gl.GLMeshItem(meshdata=md, color=(0.9, 0.9, 0.9, 0.9), glOptions='translucent')
+        sphere_item.translate(*[0.0, 2.645e-3, 2.0e-3])
+
+        self.view.addItem(sphere_item)
         
         # Create a splitter to hold the control bar and the view
         splitter = QtWidgets.QSplitter(self)
@@ -125,40 +131,29 @@ class Window(QtWidgets.QMainWindow):
         cp[4] *= 1e-2 * (cp[1] - cp[0])
         cp[9] *= 1e-2 * (cp[8] - cp[3])
         
-        cage = CageParameter(*cp)    
-        brg.reload_cage(cage)
-        brg.linspace_all()
+        brg.reload_cage(CageParameter(*cp), 20, 10)
         
-        for _ in range(50):
-            brg.smooth_face()
-            
-        for _ in range(10):
-            brg.smooth_ball()
-            brg.smooth_inner()
-        
-        verts = np.array(brg.get_points_as_list())
-        self.mesh.points = verts
+        self.mesh.points = np.array(brg.get_points_as_list())
         surface = self.mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-
         vertex_stress_values = surface['von_mises_stress']
         colors = map_stress_to_color(vertex_stress_values)
         
         self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)
                
         total = sum([control_group.get_value() for control_group in self.control_groups])
-        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [N/mm^2]')
+        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]')
         
 if __name__ == '__main__':
     
-    labels = ['内径', '外径', '底面高さ', '肩高さ', '面取り', 'ポケット径', '肩中心高さ', '肩径', '爪高さ', '爪面とり大きさ']
+    labels = ['内径', '外径', '底面高さ', '肩高さ', '底面取り', 'ポケット径', '肩中心高さ', '肩径', '爪高さ', '爪面取り']
     means = [2.35e-3, 2.85e-3, 0.93e-3, 2.10e-3, 0.2, 0.840e-3, 1.70e-3, 1.20e-3, 2.45e-3, 0.2]
-    diffs = [0.10e-3, 0.10e-3, 0.10e-3, 0.10e-3, 0.1, 0.015e-3, 0.02e-3, 0.02e-3, 0.10e-3, 0.1]
+    diffs = [0.10e-3, 0.10e-3, 0.10e-3, 0.10e-3, 0.1, 0.040e-3, 0.02e-3, 0.02e-3, 0.10e-3, 0.1]
     mm0 = lambda i: [int((means[i] - diffs[i])*1e6), int((means[i] + diffs[i])*1e6)]
     mm1 = lambda i: [int((means[i] - diffs[i])*1e2), int((means[i] + diffs[i])*1e2)]
     vl0 = lambda v: f'{v * 1e-3:.4g} [mm]'
-    vl1 = lambda v: f'{v * 1e-2:.4g} [-]'
+    vl1 = lambda v: f'{v * 1e-0:.4g} [%]'
     min_maxs     = [mm0, mm0, mm0, mm0, mm1, mm0, mm0, mm0, mm0, mm1]
     value_labels = [vl0, vl0, vl0, vl0, vl1, vl0, vl0, vl0, vl0, vl1]
     
