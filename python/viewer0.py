@@ -115,7 +115,7 @@ class Window(QtWidgets.QMainWindow):
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
-        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [MPa]')
+        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [MPa]\n')
         
         # Create a 3D graphics widget
         self.view = gl.GLViewWidget(self)
@@ -141,15 +141,33 @@ class Window(QtWidgets.QMainWindow):
         
         layout = QtWidgets.QVBoxLayout()  # Change here
         layout.addWidget(self.total_label)
+        
+        # Create the deformation toggle button
+        h_layout = QtWidgets.QHBoxLayout()
+        
+        self.deformation_button = QtWidgets.QCheckBox("変形", self)
+        self.deformation_button.setCheckable(True)
+        self.deformation_button.setChecked(False)
+        self.deformation_button.clicked.connect(self.update_value)
+        
+        # Create the fluid toggle button
+        self.fluid_button = QtWidgets.QCheckBox("流体", self)
+        self.fluid_button.setCheckable(True)
+        self.fluid_button.setChecked(True)
+        self.fluid_button.clicked.connect(self.update_value)
+
+        # Add the deformation button and indicator lamp to the layout
+        h_layout.addWidget(self.deformation_button)
+        h_layout.addWidget(self.fluid_button)
+        layout.addLayout(h_layout)
+        
         for control_group in self.control_groups:
             layout.addWidget(control_group)
+            control_group.control_bar.sliderReleased.connect(self.update_value)
         
         control_widget = QtWidgets.QWidget()
         control_widget.setLayout(layout)
         splitter.addWidget(control_widget)
-                
-        for control_group in self.control_groups:
-            control_group.control_bar.sliderReleased.connect(self.update_value)
             
         self.setCentralWidget(splitter)
 
@@ -168,15 +186,23 @@ class Window(QtWidgets.QMainWindow):
         vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
         
-        self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
-        
+        if self.deformation_button.isChecked():
+            deformation = self.fem_params[3][self.fem_params[0]]
+            self.view.items[0].setMeshData(vertexes=verts+deformation, faces=faces, vertexColors=colors)
+        else:
+            self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
+                
         cfd_points = np.array(self.cfd.get_points_as_list())
-        new_vectors = np.stack([cfd_points, cfd_points + self.cfd_params[0]], axis=1).reshape((-1, 3))
+        
+        if self.fluid_button.isChecked():
+            new_vectors = np.stack([cfd_points, cfd_points + self.cfd_params[0]], axis=1).reshape((-1, 3))
+        else:
+            new_vectors = np.stack([cfd_points, cfd_points + 0], axis=1).reshape((-1, 3))
         
         self.view.items[-1] = gl.GLLinePlotItem(pos=new_vectors, color=self.cfd_params[1], width=2.0, antialias=True, mode='lines')
         
         total = sum([control_group.get_value() for control_group in self.control_groups])
-        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]')
+        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]\n')
         
 if __name__ == '__main__':
     
@@ -198,7 +224,8 @@ if __name__ == '__main__':
     cfd = Brg('data/CFD/star_master4_rotated.vtu', "data/CFD/index4.xml", cage)
     index, face = fem.extract_surface_as_list()
     von_mises_stress = pv.read('data/FEM/FEM2_solved.vtu')['von_mises_stress']
-    fem_params = [np.array(param) for param in [index, face, von_mises_stress]]
+    deformation = pv.read('data/FEM/FEM2_solved.vtu')['deformation']
+    fem_params = [np.array(param) for param in [index, face, von_mises_stress, deformation]]
     
     sphire = sphire_item()
     outer  = file2mesh_item('data/A_Cut_Scaled.vtk', opacity=0.7)

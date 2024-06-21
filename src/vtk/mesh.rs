@@ -366,20 +366,12 @@ pub fn reindex_surface(surface_faces: &HashSet<(Face, bool)>) -> HashMap<usize, 
     let mut new_index = 0;
 
     for face in surface_faces {
-        let index = face.0.get(0);
-        if !index_map.contains_key(&index) {
-            index_map.insert(index, new_index);
-            new_index += 1;
-        }
-        let index = face.0.get(1);
-        if !index_map.contains_key(&index) {
-            index_map.insert(index, new_index);
-            new_index += 1;
-        }
-        let index = face.0.get(2);
-        if !index_map.contains_key(&index) {
-            index_map.insert(index, new_index);
-            new_index += 1;
+        for i in 0..3 {
+            let index = face.0.get(i);
+            if !index_map.contains_key(&index) {
+                index_map.insert(index, new_index);
+                new_index += 1;
+            }
         }
     }
     index_map
