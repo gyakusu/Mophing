@@ -208,8 +208,6 @@ pub fn flip_negative_volume(points: &Vec<Point>, tetras: &Vec<Tetra>, inner_inde
             println!("tetras num {}", tetras.len());
             println!("first tetra {:?}", tetras[0].index);
             println!("now tetra {:?}", t);
-
-            // println!(". The tetra on {}, {}, {}, {} is error. ", points[t[index[0]]].as_vec(), points[t[index[1]]].as_vec(), points[t[index[2]]].as_vec(), points[t[index[3]]].as_vec());
             println!(". The tetra on {}, {}, {}, {} is error. ", t[index[0]], t[index[1]], t[index[2]], t[index[3]]);
             panic!("The tetra is on the surface! Can't flip it!");
         };
@@ -363,12 +361,35 @@ pub fn check_smoothing_quality(old_points: &Vec<Point>, new_points: &Vec<Point>)
     let n = old_points.len() as f32;
     quality / n
 }
+pub fn reindex_surface(surface_faces: &HashSet<(Face, bool)>) -> HashMap<usize, usize> {
+    let mut index_map: HashMap<usize, usize> = HashMap::new();
+    let mut new_index = 0;
+
+    for face in surface_faces {
+        let index = face.0.get(0);
+        if !index_map.contains_key(&index) {
+            index_map.insert(index, new_index);
+            new_index += 1;
+        }
+        let index = face.0.get(1);
+        if !index_map.contains_key(&index) {
+            index_map.insert(index, new_index);
+            new_index += 1;
+        }
+        let index = face.0.get(2);
+        if !index_map.contains_key(&index) {
+            index_map.insert(index, new_index);
+            new_index += 1;
+        }
+    }
+    index_map
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Mesh {
     pub points: Vec<Point>,
     pub tetras: Vec<Tetra>,
-    pub surface_faces: HashSet<Face>,
+    pub surface_faces: HashSet<(Face, bool)>,
     pub inner_index:  HashSet<usize>,
     pub neighbor_map: HashMap<usize, HashSet<usize>>,
     pub surface_map:  HashMap<usize, HashSet<usize>>,
@@ -388,10 +409,10 @@ impl Mesh {
 
         Self::load(points, tetras, &surface_faces, &inner_index, &neighbor_map, &surface_map, &inverse_map)
     }
-    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, HashSet<Face>, HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {
+    pub fn save(&self) -> (Vec<Point>, Vec<Tetra>, HashSet<(Face, bool)>, HashSet<usize>, HashMap<usize, HashSet<usize>>, HashMap<usize, HashSet<usize>>) {
         (self.points.clone(), self.tetras.clone(), self.surface_faces.clone(), self.inner_index.clone(), self.neighbor_map.clone(), self.surface_map.clone())
     }
-    pub fn load(points: &Vec<Point>, tetras: &Vec<Tetra>, surface_faces: &HashSet<Face>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>, inverse_map: &HashMap<usize, HashSet<Flower>>) -> Self {
+    pub fn load(points: &Vec<Point>, tetras: &Vec<Tetra>, surface_faces: &HashSet<(Face, bool)>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>, inverse_map: &HashMap<usize, HashSet<Flower>>) -> Self {
         Self {
             points: points.clone(),
             tetras: tetras.clone(),
@@ -423,21 +444,8 @@ impl Mesh {
         let new_points = normalize_center(&self.points, center, radius, inner_index);
         self.points = new_points;
     }
-    pub fn surface_tetra_and_triangle(&self) -> HashMap<usize, Face> {
-        
-        let mut map: HashMap<usize, Face> = HashMap::new();
-        let surface_faces = self.surface_faces.clone();
-
-        for face in surface_faces {
-            for (i, tetra) in self.tetras.iter().enumerate() {
-                let (contain, _) = tetra.contain_and_remain(&face);
-                if contain {
-                    map.insert(i, face);
-                    break;
-                }
-            }
-        }
-        map
+    pub fn extract_surface(&self) -> (HashMap<usize, usize>, HashSet<(Face, bool)>) {
+        (reindex_surface(&self.surface_faces), self.surface_faces.clone())
     }
 }
 
@@ -465,7 +473,18 @@ mod tests {
         Vector3::new( 0.0, 0.0, -1.0),
     ];
     const INNER_INDEX0: [usize; 1] = [0, ];
-    
+
+    #[test]
+    fn test_reindex_surface() {
+        let tetras: Vec<Tetra> = TETRAS0.to_vec();
+        let face_map = tetras_to_face_map(&tetras);
+        let surface_faces = find_surface_faces(&face_map);
+        let index_map = reindex_surface(&surface_faces);
+        assert!(index_map.len() == 6);
+        assert!(index_map.contains_key(&1));
+        assert!(index_map.contains_key(&6));
+        assert!(!index_map.contains_key(&0));
+    }
     #[test]
     fn test_face_normal() {
         let points = vec![

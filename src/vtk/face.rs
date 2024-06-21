@@ -20,6 +20,13 @@ impl Face {
     pub fn as_vec(&self) -> [usize; 3] {
         self.index
     }
+    pub fn vec_with_order(&self, is_front: bool) -> [usize; 3] {
+        if is_front {
+            self.index
+        } else {
+            [self.index[0], self.index[2], self.index[1]]
+        }
+    }
     pub fn get(&self, i: usize) -> usize {
         #[cfg(debug_assertions)] {
             if i > 2 {

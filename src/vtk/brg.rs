@@ -203,15 +203,25 @@ impl Brg {
         let py_points: Vec<Vec<f64>> = points.iter().map(|p| p.as_vec().iter().map(|&x| x as f64).collect()).collect();
         Ok(py_points.into_py(py))
     }
-    pub fn get_surface_tetra_and_triangle_as_list(&self, py: Python) -> PyResult<PyObject> {
-        let tetra_map: HashMap<usize, super::face::Face> = self.mesh.surface_tetra_and_triangle();
-        
-        let py_tetra_map: Vec<Vec<usize>> = tetra_map.iter().map(|t| {
-            let fi: [usize; 3] = t.1.as_vec(); 
-            let vec: Vec<usize> = vec![*t.0, fi[0], fi[1], fi[2]];
-            vec
-        }).collect();
-        Ok(py_tetra_map.into_py(py))
+    pub fn extract_surface_as_list(&self, py: Python) -> PyResult<(PyObject, PyObject)> {
+        let (reindex_map, surface_faces) = self.mesh.extract_surface();
+
+        // let mut py_points: Vec<Vec<f64>> = vec![vec![0.0; 3]; reindex_map.len()];
+        // for (old, new) in reindex_map.iter() {
+        //     py_points[*new] = self.mesh.points[*old].as_vec().iter().map(|&x| x as f64).collect();
+        // }
+        let mut py_reindex_map: Vec<usize> = vec![0; reindex_map.len()];
+        for (old, new) in reindex_map.iter() {
+            py_reindex_map[*new] = *old;
+        }
+        let mut py_faces: Vec<Vec<usize>>  = vec![vec![0; 3]; surface_faces.len()];
+        for (i, (face, is_front)) in surface_faces.iter().enumerate() {
+            let face_index = face.vec_with_order(*is_front);
+            for j in 0..3 {
+                py_faces[i][j] = *reindex_map.get(&face_index[j]).unwrap();
+            }
+        }
+        Ok((py_reindex_map.into_py(py), py_faces.into_py(py)))
     }
     pub fn smooth_face(&mut self) {
 

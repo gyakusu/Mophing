@@ -112,7 +112,7 @@ pub fn read_vtk_and_setting(vtk_path: &str, setting_path: &str) -> Mesh {
     Mesh::load(&points, &tetras, &surface_faces, &inner_index, &neighbor_map, &surface_map, &inverse_map)
 }
 
-pub fn write_setting(setting_path: &str, surface_faces: &HashSet<Face>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
+pub fn write_setting(setting_path: &str, surface_faces: &HashSet<(Face, bool)>, inner_index: &HashSet<usize>, neighbor_map: &HashMap<usize, HashSet<usize>>, surface_map: &HashMap<usize, HashSet<usize>>) -> std::io::Result<()> {
     let file = File::create(setting_path)?;
     let mut writer = writer::EmitterConfig::new()
         .perform_indent(true)
@@ -122,9 +122,10 @@ pub fn write_setting(setting_path: &str, surface_faces: &HashSet<Face>, inner_in
 
     let _ = writer.write(writer::XmlEvent::start_element("surface_face"));
     let _ = writer.write(writer::XmlEvent::characters("\n"));
-    for face in surface_faces {
+    for (face, is_front) in surface_faces {
         let face_str = face.as_vec().into_iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
         let _ = writer.write(writer::XmlEvent::characters(&face_str));
+        let _ = writer.write(writer::XmlEvent::characters(&(*is_front as usize).to_string()));
         let _ = writer.write(writer::XmlEvent::characters("\n"));
     }
     let _ = writer.write(writer::XmlEvent::end_element());
@@ -162,7 +163,7 @@ pub fn write_setting(setting_path: &str, surface_faces: &HashSet<Face>, inner_in
     Ok(())
 }
 
-pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<Face>> {
+pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<(Face, bool)>> {
     let file = File::open(setting_path)?;
     let file = BufReader::new(file);
 
@@ -181,7 +182,7 @@ pub fn read_face(setting_path: &str, target: &str) -> std::io::Result<HashSet<Fa
             }
             Ok(XmlEvent::EndElement { name }) if name.local_name == target => {
                 while current_face.len() >= 3 {
-                    let (face, _) = Face::new([current_face[0], current_face[1], current_face[2]]);
+                    let face = Face::new([current_face[0], current_face[1], current_face[2]]);
                     faces.insert(face);
                     current_face.drain(0..3);
                 }

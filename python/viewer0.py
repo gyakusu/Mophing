@@ -17,11 +17,14 @@ def map_stress_to_color(stress_values, cmap='jet'):
     return plt.get_cmap(cmap)(norm(stress_values))
 
 #In[0]:
+# hoge = Brg('../data/FEM/FEM2_solved.vtu', '../data/FEM/index2.xml', CageParameter(2.35e-3, 2.85e-3, 0.93e-3, 2.10e-3, 0.2, 0.840e-3, 1.70e-3, 1.20e-3, 2.45e-3, 0.2))
+# index, face = hoge.extract_surface_as_list()
+
+# np.array(index)[:5], np.array(face)[:5]
 
 #In[0]:
 
 #In[0]:
-
 def file2mesh_item(filename, whiteness=0.8, opacity=0.3):
     mesh = pv.read(filename)
     points = np.array(mesh.points)
@@ -54,16 +57,10 @@ def file2arrow_item(filename, scale=2e-5):
     vectors = np.stack([points, points + vel2pos], axis=1).reshape((-1, 3))
     arrow_item = gl.GLLinePlotItem(pos=vectors, color=colors, width=2.0, antialias=True, mode='lines')
     return arrow_item, [vel2pos, colors]
-    
 
 #In[0]:
-# hoge = file2arrow_item('../data/CFD/star_master4_rotated.vtu')
-# fuga = hoge.pos
-# fuga = hoge.vec
 
 #In[0]:
-# fuga = hoge.setData(pos=hoge.pos)
-
 
 #In[0]:
 class ControlGroup(QtWidgets.QWidget):
@@ -107,15 +104,14 @@ class ControlGroup(QtWidgets.QWidget):
         self.value_changed.emit()
         
 class Window(QtWidgets.QMainWindow):
-    def __init__(self, control_groups, fem, fem_mesh, cfd, cfd_mesh, mesh_items, arrow_params):
+    def __init__(self, control_groups, mesh_items, fem, fem_params, cfd, cfd_params):
         super().__init__()
 
         self.control_groups = control_groups
         self.fem = fem
-        self.fem_mesh = fem_mesh
         self.cfd = cfd
-        self.cfd_mesh = cfd_mesh
-        self.arrow_params = arrow_params
+        self.cfd_params = cfd_params
+        self.fem_params = fem_params
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
@@ -128,10 +124,9 @@ class Window(QtWidgets.QMainWindow):
         self.view.setBackgroundColor(mkColor(255, 220, 255))
         
         # メッシュアイテムの作成
-        surface = self.fem_mesh.extract_geometry()
-        verts = np.array(surface.points)
-        faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-        vertex_stress_values = surface['von_mises_stress']
+        verts  = np.array(self.fem.get_points_as_list())[self.fem_params[0]]
+        faces  = self.fem_params[1]
+        vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
         mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)
         
@@ -168,19 +163,17 @@ class Window(QtWidgets.QMainWindow):
         self.fem.reload_cage(CageParameter(*cp), 20, 10)
         self.cfd.reload_cage(CageParameter(*cp), 20, 10)
         
-        self.fem_mesh.points = np.array(self.fem.get_points_as_list())
-        surface = self.fem_mesh.extract_geometry()
-        verts = np.array(surface.points)
-        faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
-        vertex_stress_values = surface['von_mises_stress']
+        verts  = np.array(self.fem.get_points_as_list())[self.fem_params[0]]
+        faces  = self.fem_params[1]
+        vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
         
         self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
         
         cfd_points = np.array(self.cfd.get_points_as_list())
-        new_vectors = np.stack([cfd_points, cfd_points + self.arrow_params[0]], axis=1).reshape((-1, 3))
+        new_vectors = np.stack([cfd_points, cfd_points + self.cfd_params[0]], axis=1).reshape((-1, 3))
         
-        self.view.items[-1] = gl.GLLinePlotItem(pos=new_vectors, color=self.arrow_params[1], width=2.0, antialias=True, mode='lines')
+        self.view.items[-1] = gl.GLLinePlotItem(pos=new_vectors, color=self.cfd_params[1], width=2.0, antialias=True, mode='lines')
         
         total = sum([control_group.get_value() for control_group in self.control_groups])
         self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]')
@@ -198,27 +191,26 @@ if __name__ == '__main__':
     vl1 = lambda v: f'{v * 1e-0:.4g} [%]'
     min_maxs     = [mm0, mm0, mm0, mm0, mm1, mm0, mm0, mm0, mm0, mm1]
     value_labels = [vl0, vl0, vl0, vl0, vl1, vl0, vl0, vl0, vl0, vl1]
+    control_groups = [ControlGroup(labels[i], min_maxs[i](i), value_labels[i]) for i in range(10)]
     
     cage = CageParameter(*means)
-    fem_name = 'data/FEM/FEM2_solved.vtu'
-    cfd_name = 'data/CFD/star_master4_rotated.vtu'
-    fem = Brg(fem_name, "data/FEM/index2.xml", cage)
-    cfd = Brg(cfd_name, "data/CFD/index4.xml", cage)
-    fem_mesh = pv.read(fem_name)
-    cfd_mesh = pv.read(cfd_name)
+    fem = Brg('data/FEM/FEM2_solved.vtu', "data/FEM/index2.xml", cage)
+    cfd = Brg('data/CFD/star_master4_rotated.vtu', "data/CFD/index4.xml", cage)
+    index, face = fem.extract_surface_as_list()
+    von_mises_stress = pv.read('data/FEM/FEM2_solved.vtu')['von_mises_stress']
+    fem_params = [np.array(param) for param in [index, face, von_mises_stress]]
     
     sphire = sphire_item()
     outer  = file2mesh_item('data/A_Cut_Scaled.vtk', opacity=0.7)
     inner  = file2mesh_item('data/B_Cut_Scaled.vtk')
-    arrow, arrow_params = file2arrow_item('data/CFD/star_master4_rotated.vtu')
+    arrow, cfd_params = file2arrow_item('data/CFD/star_master4_rotated.vtu')
     items = []
     items.extend([sphire])
     items.extend(outer)
     items.extend(inner)
     items.extend([arrow])
     
-    control_groups = [ControlGroup(labels[i], min_maxs[i](i), value_labels[i]) for i in range(10)]
-    window = Window(control_groups, fem, fem_mesh, cfd, cfd_mesh, items, arrow_params)
+    window = Window(control_groups, items, fem, fem_params, cfd, cfd_params)
     window.show()
     sys.exit(app.exec_())
     
