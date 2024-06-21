@@ -3,11 +3,11 @@
 
 #In[0]:
 import sys
-from PyQt5 import QtCore, QtWidgets
-import pyqtgraph as pg
-import pyqtgraph.opengl as gl
 import numpy as np
 import pyvista as pv
+from PyQt5 import QtCore, QtWidgets
+from pyqtgraph import opengl as gl
+from pyqtgraph import mkColor
 from matplotlib import pyplot as plt
 
 from morphing.morphing import CageParameter, Brg
@@ -17,16 +17,53 @@ def map_stress_to_color(stress_values, cmap='jet'):
     return plt.get_cmap(cmap)(norm(stress_values))
 
 #In[0]:
-# mesh = pv.read('../data/FEM/FEM2_solved.vtu')
-
-# surface = mesh.extract_geometry()
-
-# vertex_stress_values = np.array(surface.cell_data['von_mises_stress'])
-# colors = map_stress_to_color(vertex_stress_values)
 
 #In[0]:
 
 #In[0]:
+
+def file2mesh_item(filename, whiteness=0.8, opacity=0.3):
+    mesh = pv.read(filename)
+    points = np.array(mesh.points)
+    faces = np.array(mesh.faces).reshape((-1, 4))[:, 1:]
+    colors = np.ones((points.shape[0], 4)) * whiteness
+    colors[:, 3] = opacity
+    mesh_item = gl.GLMeshItem(vertexes=points, faces=faces, vertexColors=colors, glOptions='translucent')
+    
+    edges = mesh.extract_feature_edges()
+    edge_coords = [edges.points[edge] for edge in edges.lines.reshape(-1, 3)[:, 1:]]
+    edge_items  = [gl.GLLinePlotItem(pos=edge_coord, color=(0.0, 0.0, 0.0, opacity), antialias=True) for edge_coord in edge_coords]
+    edge_items.append(mesh_item)
+    
+    return edge_items
+
+def sphire_item(radius=0.76e-3, center=[0.0, 2.645e-3, 2.0e-3]):
+    md = gl.MeshData.sphere(rows=20, cols=20, radius=radius)
+    sphere_item = gl.GLMeshItem(meshdata=md, color=(0.9, 0.9, 0.9, 0.9), glOptions='translucent')
+    sphere_item.translate(*center)
+    return sphere_item
+
+def file2arrow_item(filename, scale=2e-5):
+    mesh = pv.read(filename)
+    points = np.array(mesh.points)
+    velocity = np.array(mesh['v'])
+    vnorm = np.linalg.norm(velocity, axis=1)
+    colors = np.repeat(map_stress_to_color(vnorm), 2, axis=0)
+
+    vel2pos = velocity * scale
+    vectors = np.stack([points, points + vel2pos], axis=1).reshape((-1, 3))
+    arrow_item = gl.GLLinePlotItem(pos=vectors, color=colors, width=2.0, antialias=True, mode='lines')
+    return arrow_item, [vel2pos, colors]
+    
+
+#In[0]:
+# hoge = file2arrow_item('../data/CFD/star_master4_rotated.vtu')
+# fuga = hoge.pos
+# fuga = hoge.vec
+
+#In[0]:
+# fuga = hoge.setData(pos=hoge.pos)
+
 
 #In[0]:
 class ControlGroup(QtWidgets.QWidget):
@@ -52,7 +89,6 @@ class ControlGroup(QtWidgets.QWidget):
         self.value_label = QtWidgets.QLabel(self)
         self.value_label.setFixedSize(100, 30)
         self.value_label.setText(self.vl(self.control_bar.value()))
-        
 
         # Arrange the widgets in a layout
         layout = QtWidgets.QHBoxLayout(self)
@@ -71,12 +107,15 @@ class ControlGroup(QtWidgets.QWidget):
         self.value_changed.emit()
         
 class Window(QtWidgets.QMainWindow):
-    def __init__(self, control_groups, brg, mesh):
+    def __init__(self, control_groups, fem, fem_mesh, cfd, cfd_mesh, mesh_items, arrow_params):
         super().__init__()
 
         self.control_groups = control_groups
-        self.brg = brg
-        self.mesh = mesh
+        self.fem = fem
+        self.fem_mesh = fem_mesh
+        self.cfd = cfd
+        self.cfd_mesh = cfd_mesh
+        self.arrow_params = arrow_params
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
@@ -84,12 +123,12 @@ class Window(QtWidgets.QMainWindow):
         
         # Create a 3D graphics widget
         self.view = gl.GLViewWidget(self)
-        self.view.setFixedSize(1200, 800)
+        self.view.setFixedSize(800, 800)
         self.view.setCameraPosition(distance=1e-2, azimuth=30, elevation=-60)
-        self.view.setBackgroundColor(pg.mkColor(255, 255, 255))
+        self.view.setBackgroundColor(mkColor(255, 220, 255))
         
         # メッシュアイテムの作成
-        surface = self.mesh.extract_geometry()
+        surface = self.fem_mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
         vertex_stress_values = surface['von_mises_stress']
@@ -98,12 +137,8 @@ class Window(QtWidgets.QMainWindow):
         
         self.view.addItem(mesh_item)
         
-        # 球の中心座標と半径
-        md = gl.MeshData.sphere(rows=20, cols=20, radius=0.76e-3)
-        sphere_item = gl.GLMeshItem(meshdata=md, color=(0.9, 0.9, 0.9, 0.9), glOptions='translucent')
-        sphere_item.translate(*[0.0, 2.645e-3, 2.0e-3])
-
-        self.view.addItem(sphere_item)
+        for mesh_item in mesh_items:
+            self.view.addItem(mesh_item)
         
         # Create a splitter to hold the control bar and the view
         splitter = QtWidgets.QSplitter(self)
@@ -121,7 +156,6 @@ class Window(QtWidgets.QMainWindow):
         for control_group in self.control_groups:
             control_group.control_bar.sliderReleased.connect(self.update_value)
             
-        # Set the splitter as the central widget
         self.setCentralWidget(splitter)
 
     def update_value(self):
@@ -131,21 +165,29 @@ class Window(QtWidgets.QMainWindow):
         cp[4] *= 1e-2 * (cp[1] - cp[0])
         cp[9] *= 1e-2 * (cp[8] - cp[3])
         
-        brg.reload_cage(CageParameter(*cp), 20, 10)
+        self.fem.reload_cage(CageParameter(*cp), 20, 10)
+        self.cfd.reload_cage(CageParameter(*cp), 20, 10)
         
-        self.mesh.points = np.array(brg.get_points_as_list())
-        surface = self.mesh.extract_geometry()
+        self.fem_mesh.points = np.array(self.fem.get_points_as_list())
+        surface = self.fem_mesh.extract_geometry()
         verts = np.array(surface.points)
         faces = np.array(surface.faces).reshape((-1, 4))[:, 1:]
         vertex_stress_values = surface['von_mises_stress']
         colors = map_stress_to_color(vertex_stress_values)
         
-        self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)
-               
+        self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
+        
+        cfd_points = np.array(self.cfd.get_points_as_list())
+        new_vectors = np.stack([cfd_points, cfd_points + self.arrow_params[0]], axis=1).reshape((-1, 3))
+        
+        self.view.items[-1] = gl.GLLinePlotItem(pos=new_vectors, color=self.arrow_params[1], width=2.0, antialias=True, mode='lines')
+        
         total = sum([control_group.get_value() for control_group in self.control_groups])
         self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]')
         
 if __name__ == '__main__':
+    
+    app = QtWidgets.QApplication(sys.argv)
     
     labels = ['内径', '外径', '底面高さ', '肩高さ', '底面取り', 'ポケット径', '肩中心高さ', '肩径', '爪高さ', '爪面取り']
     means = [2.35e-3, 2.85e-3, 0.93e-3, 2.10e-3, 0.2, 0.840e-3, 1.70e-3, 1.20e-3, 2.45e-3, 0.2]
@@ -158,13 +200,25 @@ if __name__ == '__main__':
     value_labels = [vl0, vl0, vl0, vl0, vl1, vl0, vl0, vl0, vl0, vl1]
     
     cage = CageParameter(*means)
-    filename = 'data/FEM/FEM2_solved.vtu'
-    brg = Brg(filename, "data/FEM/index2.xml", cage)
-    mesh = pv.read(filename)
+    fem_name = 'data/FEM/FEM2_solved.vtu'
+    cfd_name = 'data/CFD/star_master4_rotated.vtu'
+    fem = Brg(fem_name, "data/FEM/index2.xml", cage)
+    cfd = Brg(cfd_name, "data/CFD/index4.xml", cage)
+    fem_mesh = pv.read(fem_name)
+    cfd_mesh = pv.read(cfd_name)
     
-    app = QtWidgets.QApplication(sys.argv)
+    sphire = sphire_item()
+    outer  = file2mesh_item('data/A_Cut_Scaled.vtk', opacity=0.7)
+    inner  = file2mesh_item('data/B_Cut_Scaled.vtk')
+    arrow, arrow_params = file2arrow_item('data/CFD/star_master4_rotated.vtu')
+    items = []
+    items.extend([sphire])
+    items.extend(outer)
+    items.extend(inner)
+    items.extend([arrow])
+    
     control_groups = [ControlGroup(labels[i], min_maxs[i](i), value_labels[i]) for i in range(10)]
-    window = Window(control_groups, brg, mesh)
+    window = Window(control_groups, fem, fem_mesh, cfd, cfd_mesh, items, arrow_params)
     window.show()
     sys.exit(app.exec_())
     
