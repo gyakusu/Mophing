@@ -7,4 +7,8 @@ morphing
 data/*
 !data/*.vtu
 !data/*.vtk
+!data/FEM/*.vtu
+!data/FEM/*.vtk
+!data/CFD/*.vtu
+!data/CFD/*.vtk
 
