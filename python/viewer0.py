@@ -178,7 +178,7 @@ class Window(QtWidgets.QMainWindow):
         cp[4] *= 1e-2 * (cp[1] - cp[0])
         cp[9] *= 1e-2 * (cp[8] - cp[3])
         
-        self.fem.reload_cage(CageParameter(*cp), 20, 10)
+        self.fem.reload_cage(CageParameter(*cp), 20, 0)
         self.cfd.reload_cage(CageParameter(*cp), 20, 10)
         
         verts  = np.array(self.fem.get_points_as_list())[self.fem_params[0]]
