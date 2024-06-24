@@ -8,5 +8,6 @@
         "./Cargo.toml"
     ],
     "rust-analyzer.showUnlinkedFileNotification": false,
-    "r.lsp.promptToInstall": false
+    "r.lsp.promptToInstall": false,
+    "git.ignoreLimitWarning": true
 }
