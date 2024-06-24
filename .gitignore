@@ -1,11 +1,10 @@
 target/
-data/
 *.pdf
 .DS_Store
 .env/
 target
 morphing
-!*.vtu
-!*.vtk
-
+data/*
+!data/*.vtu
+!data/*.vtk
 
