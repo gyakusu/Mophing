@@ -2,16 +2,16 @@ target/
 *.pdf
 .DS_Store
 .env/
-target
-morphing
+target/
+morphing/
 data/*
-!data/*.vtu
-!data/*.vtk
-!data/*.cgns
 !data/FEM/*.vtu
 !data/FEM/*.vtk
 !data/FEM/*.cgns
 !data/CFD/*.vtu
 !data/CFD/*.vtk
 !data/CFD/*.cgns
+!data/*.vtu
+!data/*.vtk
+!data/*.cgns
 
