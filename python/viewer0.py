@@ -9,11 +9,16 @@ from PyQt5 import QtCore, QtWidgets
 from pyqtgraph import opengl as gl
 from pyqtgraph import mkColor
 from matplotlib import pyplot as plt
+import OpenGL.GL as ogl
 
 from morphing.morphing import CageParameter, Brg
 
+def map_to_color(values, cmap='jet'):
+    norm = plt.Normalize(vmin=values.min(), vmax=values.max())
+    return plt.get_cmap(cmap)(norm(values))
+
 def map_stress_to_color(stress_values, cmap='jet'):
-    norm = plt.Normalize(vmin=stress_values.min(), vmax=stress_values.max())
+    norm = plt.Normalize(vmin=0.0, vmax=1e10)
     return plt.get_cmap(cmap)(norm(stress_values))
 
 #In[0]:
@@ -51,7 +56,7 @@ def file2arrow_item(filename, scale=2e-5):
     points = np.array(mesh.points)
     velocity = np.array(mesh['v'])
     vnorm = np.linalg.norm(velocity, axis=1)
-    colors = np.repeat(map_stress_to_color(vnorm), 2, axis=0)
+    colors = np.repeat(map_to_color(vnorm), 2, axis=0)
 
     vel2pos = velocity * scale
     vectors = np.stack([points, points + vel2pos], axis=1).reshape((-1, 3))
@@ -63,6 +68,22 @@ def file2arrow_item(filename, scale=2e-5):
 #In[0]:
 
 #In[0]:
+class CustomGLMeshItem(gl.GLMeshItem):
+    def __init__(self, *args, **kwargs):
+        super(CustomGLMeshItem, self).__init__(*args, **kwargs)
+        self.edgeColor = (1, 1, 1, 1)  # RGBAで白色
+        self.edgeWidth = 5  # 線の太さをデフォルトの3倍に設定
+
+    def paint(self):
+        if self.opts['drawEdges']:
+            ogl.glPushAttrib(ogl.GL_CURRENT_BIT | ogl.GL_LINE_BIT)
+            ogl.glLineWidth(self.edgeWidth)  # 線の太さを設定
+            ogl.glColor4f(*self.edgeColor)  # エッジの色を設定
+            super(CustomGLMeshItem, self).paint()
+            ogl.glPopAttrib()
+        else:
+            super(CustomGLMeshItem, self).paint()
+
 class ControlGroup(QtWidgets.QWidget):
     def __init__(self, label, min_max, value_label, parent=None):
         super().__init__(parent)
@@ -104,7 +125,7 @@ class ControlGroup(QtWidgets.QWidget):
         self.value_changed.emit()
         
 class Window(QtWidgets.QMainWindow):
-    def __init__(self, control_groups, mesh_items, fem, fem_params, cfd, cfd_params):
+    def __init__(self, control_groups, mesh_items, fem, fem_params, cfd, cfd_params, models, parent=None):
         super().__init__()
 
         self.control_groups = control_groups
@@ -112,6 +133,7 @@ class Window(QtWidgets.QMainWindow):
         self.cfd = cfd
         self.cfd_params = cfd_params
         self.fem_params = fem_params
+        self.models = models
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
@@ -128,7 +150,7 @@ class Window(QtWidgets.QMainWindow):
         faces  = self.fem_params[1]
         vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
-        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors, drawEdges=True)
+        mesh_item = CustomGLMeshItem(vertexes=verts, faces=faces, vertexColors=colors, drawEdges=True)
         
         self.view.addItem(mesh_item)
         
@@ -178,16 +200,23 @@ class Window(QtWidgets.QMainWindow):
         cp[4] *= 1e-2 * (cp[1] - cp[0])
         cp[9] *= 1e-2 * (cp[8] - cp[3])
         
+        cp_with_bias = np.hstack([np.array(cp), np.ones(1)])
+        
         self.fem.reload_cage(CageParameter(*cp), 20, 0)
         self.cfd.reload_cage(CageParameter(*cp), 20, 10)
         
         verts  = np.array(self.fem.get_points_as_list())[self.fem_params[0]]
         faces  = self.fem_params[1]
-        vertex_stress_values = self.fem_params[2][self.fem_params[0]]
+        vertex_stress_values = np.dot(self.models['mises_model'], cp_with_bias)[self.fem_params[0]]
+        # vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
         
         if self.deformation_button.isChecked():
-            deformation = self.fem_params[3][self.fem_params[0]]
+            def_x = np.dot(self.models['x_model'], cp_with_bias)
+            def_y = np.dot(self.models['y_model'], cp_with_bias)
+            def_z = np.dot(self.models['z_model'], cp_with_bias)
+            deformation = np.stack([def_x, def_y, def_z], axis=1)[self.fem_params[0]]
+            # deformation = self.fem_params[3][self.fem_params[0]]
             self.view.items[0].setMeshData(vertexes=verts+deformation, faces=faces, vertexColors=colors)
         else:
             self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
@@ -227,6 +256,8 @@ if __name__ == '__main__':
     deformation = pv.read('data/FEM/FEM2_solved.vtu')['deformation']
     fem_params = [np.array(param) for param in [index, face, von_mises_stress, deformation]]
     
+    models = np.load('data/train.npz')
+    
     sphire = sphire_item()
     outer  = file2mesh_item('data/A_Cut_Scaled.vtk', opacity=0.7)
     inner  = file2mesh_item('data/B_Cut_Scaled.vtk')
@@ -237,7 +268,7 @@ if __name__ == '__main__':
     items.extend(inner)
     items.extend([arrow])
     
-    window = Window(control_groups, items, fem, fem_params, cfd, cfd_params)
+    window = Window(control_groups, items, fem, fem_params, cfd, cfd_params, models)
     window.show()
     sys.exit(app.exec_())
     
