@@ -1,5 +1,5 @@
 #In[0]:
-# !maturin develop
+# !maturin develop --release
 
 #In[0]:
 import sys
@@ -128,7 +128,7 @@ class Window(QtWidgets.QMainWindow):
         faces  = self.fem_params[1]
         vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
-        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors)
+        mesh_item = gl.GLMeshItem(vertexes=verts, faces=faces, vertexColors=colors, drawEdges=True)
         
         self.view.addItem(mesh_item)
         
