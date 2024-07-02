@@ -206,10 +206,6 @@ impl Brg {
     pub fn extract_surface_as_list(&self, py: Python) -> PyResult<(PyObject, PyObject)> {
         let (reindex_map, surface_faces) = self.mesh.extract_surface();
 
-        // let mut py_points: Vec<Vec<f64>> = vec![vec![0.0; 3]; reindex_map.len()];
-        // for (old, new) in reindex_map.iter() {
-        //     py_points[*new] = self.mesh.points[*old].as_vec().iter().map(|&x| x as f64).collect();
-        // }
         let mut py_reindex_map: Vec<usize> = vec![0; reindex_map.len()];
         for (old, new) in reindex_map.iter() {
             py_reindex_map[*new] = *old;
@@ -378,8 +374,22 @@ impl Brg {
     }
     pub fn write_vtk_from_base(&self, origin_path: &str, write_path: &str) {
         copy_vtk_and_replace_point(origin_path, write_path, &self.get_points());
-
     }
+    pub fn flip_with_scale(&mut self, scale: f32, ratio: f32) -> bool {
+        self.scale(1.0 / scale);
+        let result = self.flip_negative_volume(ratio);
+        self.scale(scale);
+        self.normalize_center();
+        result
+    }
+    pub fn flip_sphire_with_scale(&mut self, scale: f32, ratio: f32) -> bool {
+        self.scale(1.0 / scale);
+        let result = self.flip_negative_volume_only_sphire(ratio);
+        self.scale(scale);
+        self.normalize_center();
+        result
+    }
+
 }
 impl Brg {
     pub fn new(mesh: &Mesh, cage: &CageParameter) -> Self {        
