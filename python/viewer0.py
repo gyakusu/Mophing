@@ -72,7 +72,7 @@ class CustomGLMeshItem(gl.GLMeshItem):
     def __init__(self, *args, **kwargs):
         super(CustomGLMeshItem, self).__init__(*args, **kwargs)
         self.edgeColor = (1, 1, 1, 1)  # RGBAで白色
-        self.edgeWidth = 5  # 線の太さをデフォルトの3倍に設定
+        self.edgeWidth = 6  # 線の太さをデフォルトの3倍に設定
 
     def paint(self):
         if self.opts['drawEdges']:
@@ -137,7 +137,7 @@ class Window(QtWidgets.QMainWindow):
         
         self.total_label = QtWidgets.QLabel(self)
         self.total_label.setFixedSize(400, 30)
-        self.total_label.setText(f'fluid torque:\t0 [Nmm]\nmises stress:\t0 [MPa]\n')
+        self.total_label.setText(f'fluid torque:\tT =\t0 [Nmm]\nmises stress:\tσ =\t0 [MPa]\n')
         
         # Create a 3D graphics widget
         self.view = gl.GLViewWidget(self)
@@ -208,7 +208,6 @@ class Window(QtWidgets.QMainWindow):
         verts  = np.array(self.fem.get_points_as_list())[self.fem_params[0]]
         faces  = self.fem_params[1]
         vertex_stress_values = np.dot(self.models['mises_model'], cp_with_bias)[self.fem_params[0]]
-        # vertex_stress_values = self.fem_params[2][self.fem_params[0]]
         colors = map_stress_to_color(vertex_stress_values)
         
         if self.deformation_button.isChecked():
@@ -216,7 +215,6 @@ class Window(QtWidgets.QMainWindow):
             def_y = np.dot(self.models['y_model'], cp_with_bias)
             def_z = np.dot(self.models['z_model'], cp_with_bias)
             deformation = np.stack([def_x, def_y, def_z], axis=1)[self.fem_params[0]]
-            # deformation = self.fem_params[3][self.fem_params[0]]
             self.view.items[0].setMeshData(vertexes=verts+deformation, faces=faces, vertexColors=colors)
         else:
             self.view.items[0].setMeshData(vertexes=verts, faces=faces, vertexColors=colors)        
@@ -230,8 +228,8 @@ class Window(QtWidgets.QMainWindow):
         
         self.view.items[-1] = gl.GLLinePlotItem(pos=new_vectors, color=self.cfd_params[1], width=2.0, antialias=True, mode='lines')
         
-        total = sum([control_group.get_value() for control_group in self.control_groups])
-        self.total_label.setText(f'fluid torque:\t{total} [Nmm]\nmises stress:\t{total*2} [MPa]\n')
+        total = vertex_stress_values.max() * 1e-9
+        self.total_label.setText(f'fluid torque:\tT =\t{total:.4g} [Nmm]\nmises stress:\tσ =\t{total:.4g} [GPa]\n')
         
 if __name__ == '__main__':
     
@@ -254,7 +252,7 @@ if __name__ == '__main__':
     index, face = fem.extract_surface_as_list()
     von_mises_stress = pv.read('data/FEM/FEM2_solved.vtu')['von_mises_stress']
     deformation = pv.read('data/FEM/FEM2_solved.vtu')['deformation']
-    fem_params = [np.array(param) for param in [index, face, von_mises_stress, deformation]]
+    fem_params = [np.array(param) for param in [index, face, von_mises_stress, ]]
     
     models = np.load('data/train.npz')
     
